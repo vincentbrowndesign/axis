@@ -45,6 +45,11 @@ video {
   background: #000;
 }
 
+pre {
+  margin: 0;
+  font: inherit;
+}
+
 ::selection {
   background: rgba(190, 242, 100, 0.35);
   color: white;
