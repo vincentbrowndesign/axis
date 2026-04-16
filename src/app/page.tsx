@@ -36,6 +36,9 @@ type PossessionChain = {
   id: string;
   links: LinkRecord[];
   outcome?: Outcome;
+  startTimeSec?: number;
+  endTimeSec?: number;
+  thumbnailUrl?: string;
 };
 
 type FlowQuestionKey =
@@ -121,6 +124,56 @@ function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function formatTime(seconds?: number) {
+  if (seconds == null || Number.isNaN(seconds)) return "—";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+async function captureFrameAtTime(
+  video: HTMLVideoElement,
+  timeSec: number
+): Promise<string> {
+  const originalTime = video.currentTime;
+  const safeTime = Math.max(0, Math.min(timeSec, Math.max(video.duration - 0.1, 0)));
+
+  await new Promise<void>((resolve, reject) => {
+    const onSeeked = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Failed to seek video for thumbnail extraction."));
+    };
+    const cleanup = () => {
+      video.removeEventListener("seeked", onSeeked);
+      video.removeEventListener("error", onError);
+    };
+
+    video.addEventListener("seeked", onSeeked, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    video.currentTime = safeTime;
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    video.currentTime = originalTime;
+    throw new Error("Could not create canvas context.");
+  }
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+
+  video.currentTime = originalTime;
+  return dataUrl;
+}
+
 function SegmentedTab({
   active,
   label,
@@ -201,6 +254,24 @@ function QuickChip({
           ? "border-lime-300 bg-lime-300 text-black"
           : "border-white/10 bg-white/[0.04] text-white/72 hover:bg-white/[0.08]"
       )}
+    >
+      {label}
+    </button>
+  );
+}
+
+function UtilityChip({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.22em] text-white/72 transition hover:bg-white/[0.08]"
     >
       {label}
     </button>
@@ -333,12 +404,14 @@ function chainToExportPossession(chain: PossessionChain): PossessionRecord {
 
 export default function Page() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [activeTab, setActiveTab] = useState<"review" | "export">("review");
   const [videoUrl, setVideoUrl] = useState("");
   const [videoName, setVideoName] = useState("No video selected");
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [chains, setChains] = useState<Record<string, PossessionChain>>({});
+  const [isCapturingThumb, setIsCapturingThumb] = useState(false);
 
   const currentStep = REVIEW_STEPS[currentStepIndex];
   const currentChain = chains[currentStep.id] ?? {
@@ -410,6 +483,15 @@ export default function Page() {
     [reviewedPossessions]
   );
 
+  const bestThumbnailUrl = useMemo(() => {
+    const completedChains = REVIEW_STEPS.map((step) => chains[step.id]).filter(
+      (chain): chain is PossessionChain => Boolean(chain?.outcome)
+    );
+
+    const withThumb = completedChains.find((chain) => chain.thumbnailUrl);
+    return withThumb?.thumbnailUrl;
+  }, [chains]);
+
   function handlePickVideo() {
     fileInputRef.current?.click();
   }
@@ -423,6 +505,24 @@ export default function Page() {
     const objectUrl = URL.createObjectURL(file);
     setVideoUrl(objectUrl);
     setVideoName(file.name);
+  }
+
+  function updateChain(patch: Partial<PossessionChain>) {
+    setChains((prev) => {
+      const existing = prev[currentStep.id] ?? {
+        id: currentStep.id,
+        links: [{}],
+        outcome: undefined,
+      };
+
+      return {
+        ...prev,
+        [currentStep.id]: {
+          ...existing,
+          ...patch,
+        },
+      };
+    });
   }
 
   function updateActiveLink(patch: Partial<LinkRecord>) {
@@ -487,6 +587,55 @@ export default function Page() {
         },
       };
     });
+  }
+
+  async function grabThumbnail() {
+    const video = videoRef.current;
+    if (!video || !videoUrl) return;
+
+    try {
+      setIsCapturingThumb(true);
+
+      const start = currentChain.startTimeSec;
+      const end = currentChain.endTimeSec;
+      const current = video.currentTime || 0;
+
+      const frameTime =
+        start != null && end != null && end > start
+          ? (start + end) / 2
+          : start != null
+            ? start
+            : current;
+
+      const thumbnailUrl = await captureFrameAtTime(video, frameTime);
+
+      updateChain({ thumbnailUrl });
+    } catch (error) {
+      console.error(error);
+      alert("Could not extract thumbnail from video.");
+    } finally {
+      setIsCapturingThumb(false);
+    }
+  }
+
+  function markStart() {
+    const video = videoRef.current;
+    if (!video) return;
+    updateChain({ startTimeSec: video.currentTime });
+  }
+
+  function markEnd() {
+    const video = videoRef.current;
+    if (!video) return;
+    updateChain({ endTimeSec: video.currentTime });
+  }
+
+  function jumpToTime(time?: number) {
+    if (time == null) return;
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = time;
+    video.play().catch(() => {});
   }
 
   function answerQuestion(value: string) {
@@ -683,6 +832,7 @@ export default function Page() {
                   <div className="relative aspect-[9/12] w-full sm:aspect-video xl:aspect-[16/10]">
                     {videoUrl ? (
                       <video
+                        ref={videoRef}
                         src={videoUrl}
                         controls
                         playsInline
@@ -735,6 +885,27 @@ export default function Page() {
                           onClick={() => quickSetPaintTouch(option.value)}
                         />
                       ))}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <UtilityChip label="Mark Start" onClick={markStart} />
+                      <UtilityChip label="Mark End" onClick={markEnd} />
+                      <UtilityChip
+                        label={isCapturingThumb ? "Grabbing..." : "Grab Thumbnail"}
+                        onClick={grabThumbnail}
+                      />
+                      {currentChain.startTimeSec != null ? (
+                        <UtilityChip
+                          label={`Go Start ${formatTime(currentChain.startTimeSec)}`}
+                          onClick={() => jumpToTime(currentChain.startTimeSec)}
+                        />
+                      ) : null}
+                      {currentChain.endTimeSec != null ? (
+                        <UtilityChip
+                          label={`Go End ${formatTime(currentChain.endTimeSec)}`}
+                          onClick={() => jumpToTime(currentChain.endTimeSec)}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -803,6 +974,21 @@ export default function Page() {
                     </div>
 
                     <div className="space-y-3">
+                      <div className="rounded-[18px] border border-white/8 bg-black/40 p-4 text-sm text-white/78">
+                        <div>Start · {formatTime(currentChain.startTimeSec)}</div>
+                        <div>End · {formatTime(currentChain.endTimeSec)}</div>
+                      </div>
+
+                      {currentChain.thumbnailUrl ? (
+                        <div className="overflow-hidden rounded-[18px] border border-white/8 bg-black/40">
+                          <img
+                            src={currentChain.thumbnailUrl}
+                            alt="Possession thumbnail"
+                            className="h-44 w-full object-cover"
+                          />
+                        </div>
+                      ) : null}
+
                       {currentChain.links.map((link, index) => (
                         <div
                           key={index}
@@ -832,22 +1018,22 @@ export default function Page() {
             <aside className="hidden xl:block">
               <div className="rounded-[28px] border border-white/8 bg-white/[0.03] p-5">
                 <div className="mb-3 text-xs uppercase tracking-[0.28em] text-white/35">
-                  Chain logic
+                  Clip memory
                 </div>
 
                 <h3 className="text-3xl font-semibold tracking-tight">
-                  Use the video as input
+                  Mark the possession window
                 </h3>
 
                 <p className="mt-4 max-w-sm text-base leading-7 text-white/68">
-                  The top chips now control the active link. They are not just
-                  labels anymore.
+                  Start and end now belong to the possession. Thumbnail pulls a
+                  real frame from that window.
                 </p>
 
                 <div className="mt-8 space-y-3">
-                  <InfoPill>Top row = start action</InfoPill>
-                  <InfoPill>Second row = side + paint context</InfoPill>
-                  <InfoPill>Pass still starts the next link</InfoPill>
+                  <InfoPill>Mark Start at possession beginning</InfoPill>
+                  <InfoPill>Mark End when the possession actually ends</InfoPill>
+                  <InfoPill>Grab Thumbnail from the possession window</InfoPill>
                 </div>
 
                 <div className="mt-8 rounded-[24px] border border-white/8 bg-black/40 p-4">
@@ -874,6 +1060,7 @@ export default function Page() {
           <ExportReport
             possessions={reviewedPossessions}
             videoUrl={videoUrl}
+            thumbnailUrl={bestThumbnailUrl}
           />
         )}
       </div>
