@@ -1,6 +1,11 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import ExportReport from "@/components/export/ExportReport";
+import {
+  deriveSessionIntelligence,
+  type PossessionRecord,
+} from "@/components/export/intelligence";
 
 type ReviewStep = {
   id: string;
@@ -19,7 +24,7 @@ type Decision = "pass" | "finish" | "reset";
 type PassTarget = "corner" | "wing" | "top" | "skip";
 type Outcome = "make" | "miss" | "foul" | "turnover" | "not_shot";
 
-type PossessionRecord = {
+type LinkRecord = {
   startAction?: StartAction;
   side?: Side;
   pressure?: Pressure;
@@ -27,6 +32,11 @@ type PossessionRecord = {
   help?: Help;
   decision?: Decision;
   passTarget?: PassTarget;
+};
+
+type PossessionChain = {
+  id: string;
+  links: LinkRecord[];
   outcome?: Outcome;
 };
 
@@ -55,6 +65,54 @@ const REVIEW_STEPS: ReviewStep[] = [
   { id: "6", clipLabel: "Clip 6", actionLabel: "Pass", zoneLabel: "Corner", timeLabel: "0:05" },
   { id: "7", clipLabel: "Clip 7", actionLabel: "Shot", zoneLabel: "Corner", timeLabel: "0:03" },
   { id: "8", clipLabel: "Clip 8", actionLabel: "Drive", zoneLabel: "Rim", timeLabel: "0:06" },
+];
+
+const START_ACTION_OPTIONS: Option<StartAction>[] = [
+  { value: "drive", label: "Drive", tone: "lime" },
+  { value: "pass", label: "Pass", tone: "lime" },
+  { value: "shot", label: "Shot", tone: "lime" },
+];
+
+const SIDE_OPTIONS: Option<Side>[] = [
+  { value: "left", label: "Left", tone: "lime" },
+  { value: "middle", label: "Middle", tone: "lime" },
+  { value: "right", label: "Right", tone: "lime" },
+];
+
+const PRESSURE_OPTIONS: Option<Pressure>[] = [
+  { value: "downhill_yes", label: "Downhill", tone: "lime" },
+  { value: "downhill_no", label: "No Downhill" },
+];
+
+const PAINT_TOUCH_OPTIONS: Option<PaintTouch>[] = [
+  { value: "paint_yes", label: "Paint Touch", tone: "lime" },
+  { value: "paint_no", label: "No Paint" },
+];
+
+const HELP_OPTIONS: Option<Help>[] = [
+  { value: "help_yes", label: "Help", tone: "lime" },
+  { value: "help_no", label: "No Help" },
+];
+
+const DECISION_OPTIONS: Option<Decision>[] = [
+  { value: "pass", label: "Pass", tone: "lime" },
+  { value: "finish", label: "Finish", tone: "lime" },
+  { value: "reset", label: "Reset" },
+];
+
+const PASS_TARGET_OPTIONS: Option<PassTarget>[] = [
+  { value: "corner", label: "Corner", tone: "lime" },
+  { value: "wing", label: "Wing", tone: "lime" },
+  { value: "top", label: "Top" },
+  { value: "skip", label: "Skip" },
+];
+
+const OUTCOME_OPTIONS: Option<Outcome>[] = [
+  { value: "make", label: "Make", tone: "lime" },
+  { value: "miss", label: "Miss" },
+  { value: "foul", label: "Foul" },
+  { value: "turnover", label: "Turnover" },
+  { value: "not_shot", label: "Not a shot" },
 ];
 
 function cn(...classes: Array<string | false | null | undefined>) {
@@ -142,98 +200,7 @@ function InfoPill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatRow({
-  label,
-  value,
-  noBorder = false,
-}: {
-  label: string;
-  value: string | number;
-  noBorder?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between py-4",
-        !noBorder && "border-b border-white/8"
-      )}
-    >
-      <span className="text-sm uppercase tracking-[0.28em] text-white/35">
-        {label}
-      </span>
-      <span className="text-4xl font-semibold">{value}</span>
-    </div>
-  );
-}
-
-function ExportCard({
-  title,
-  body,
-}: {
-  title: string;
-  body: string;
-}) {
-  return (
-    <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-      <div className="mb-2 text-xs uppercase tracking-[0.28em] text-white/35">
-        {title}
-      </div>
-      <pre className="overflow-x-auto whitespace-pre-wrap break-words text-sm leading-7 text-white/82">
-        {body}
-      </pre>
-    </div>
-  );
-}
-
-const START_ACTION_OPTIONS: Option<StartAction>[] = [
-  { value: "drive", label: "Drive", tone: "lime" },
-  { value: "pass", label: "Pass", tone: "lime" },
-  { value: "shot", label: "Shot", tone: "lime" },
-];
-
-const SIDE_OPTIONS: Option<Side>[] = [
-  { value: "left", label: "Left", tone: "lime" },
-  { value: "middle", label: "Middle", tone: "lime" },
-  { value: "right", label: "Right", tone: "lime" },
-];
-
-const PRESSURE_OPTIONS: Option<Pressure>[] = [
-  { value: "downhill_yes", label: "Downhill", tone: "lime" },
-  { value: "downhill_no", label: "No Downhill" },
-];
-
-const PAINT_TOUCH_OPTIONS: Option<PaintTouch>[] = [
-  { value: "paint_yes", label: "Paint Touch", tone: "lime" },
-  { value: "paint_no", label: "No Paint" },
-];
-
-const HELP_OPTIONS: Option<Help>[] = [
-  { value: "help_yes", label: "Help", tone: "lime" },
-  { value: "help_no", label: "No Help" },
-];
-
-const DECISION_OPTIONS: Option<Decision>[] = [
-  { value: "pass", label: "Pass", tone: "lime" },
-  { value: "finish", label: "Finish", tone: "lime" },
-  { value: "reset", label: "Reset" },
-];
-
-const PASS_TARGET_OPTIONS: Option<PassTarget>[] = [
-  { value: "corner", label: "Corner", tone: "lime" },
-  { value: "wing", label: "Wing", tone: "lime" },
-  { value: "top", label: "Top" },
-  { value: "skip", label: "Skip" },
-];
-
-const OUTCOME_OPTIONS: Option<Outcome>[] = [
-  { value: "make", label: "Make", tone: "lime" },
-  { value: "miss", label: "Miss" },
-  { value: "foul", label: "Foul" },
-  { value: "turnover", label: "Turnover" },
-  { value: "not_shot", label: "Not a shot" },
-];
-
-function getFlowKeys(record: PossessionRecord): FlowQuestionKey[] {
+function buildFlowKeys(link: LinkRecord): FlowQuestionKey[] {
   const keys: FlowQuestionKey[] = [
     "startAction",
     "side",
@@ -243,34 +210,24 @@ function getFlowKeys(record: PossessionRecord): FlowQuestionKey[] {
     "decision",
   ];
 
-  if (record.decision === "pass") {
+  if (link.decision === "pass") {
     keys.push("passTarget");
   }
 
-  keys.push("outcome");
+  if (link.decision && link.decision !== "pass") {
+    keys.push("outcome");
+  }
+
   return keys;
 }
 
-function getQuestionMeta(record: PossessionRecord, key: FlowQuestionKey): {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  options:
-    | Option<StartAction>[]
-    | Option<Side>[]
-    | Option<Pressure>[]
-    | Option<PaintTouch>[]
-    | Option<Help>[]
-    | Option<Decision>[]
-    | Option<PassTarget>[]
-    | Option<Outcome>[];
-} {
+function getQuestionMeta(key: FlowQuestionKey) {
   switch (key) {
     case "startAction":
       return {
         eyebrow: "Start",
         title: "How did it start?",
-        subtitle: "Mark the first real action of the possession.",
+        subtitle: "Mark the first real action of this link.",
         options: START_ACTION_OPTIONS,
       };
     case "side":
@@ -305,187 +262,138 @@ function getQuestionMeta(record: PossessionRecord, key: FlowQuestionKey): {
       return {
         eyebrow: "Decision",
         title: "What happened next?",
-        subtitle: "Mark the next decision after pressure/help.",
+        subtitle: "A pass starts the next link in the chain.",
         options: DECISION_OPTIONS,
       };
     case "passTarget":
       return {
         eyebrow: "Pass",
         title: "Where did the pass go?",
-        subtitle: "Keep it simple and environment friendly.",
+        subtitle: "This ends the current link and starts the next one.",
         options: PASS_TARGET_OPTIONS,
       };
     case "outcome":
       return {
         eyebrow: "Outcome",
         title: "How did it end?",
-        subtitle: "Mark the final result of the possession.",
+        subtitle: "Only finish the possession when the chain actually ends.",
         options: OUTCOME_OPTIONS,
       };
   }
 }
 
-function possessionSentence(record: PossessionRecord) {
+function linkSentence(link: LinkRecord) {
   const parts: string[] = [];
 
-  if (record.startAction) parts.push(titleCase(record.startAction));
-  if (record.side) parts.push(titleCase(record.side));
-  if (record.pressure === "downhill_yes") parts.push("Downhill");
-  if (record.pressure === "downhill_no") parts.push("No downhill");
-  if (record.paintTouch === "paint_yes") parts.push("Paint touch");
-  if (record.paintTouch === "paint_no") parts.push("No paint");
-  if (record.help === "help_yes") parts.push("Help");
-  if (record.help === "help_no") parts.push("No help");
-
-  if (record.decision === "pass") parts.push("Pass");
-  if (record.decision === "finish") parts.push("Finish");
-  if (record.decision === "reset") parts.push("Reset");
-
-  if (record.passTarget) {
-    const label = record.passTarget === "top" ? "Top" : titleCase(record.passTarget);
-    parts.push(`To ${label}`);
-  }
-
-  if (record.outcome === "make") parts.push("Make");
-  if (record.outcome === "miss") parts.push("Miss");
-  if (record.outcome === "foul") parts.push("Foul");
-  if (record.outcome === "turnover") parts.push("Turnover");
-  if (record.outcome === "not_shot") parts.push("Not a shot");
+  if (link.startAction) parts.push(titleCase(link.startAction));
+  if (link.side) parts.push(titleCase(link.side));
+  if (link.pressure === "downhill_yes") parts.push("Downhill");
+  if (link.pressure === "downhill_no") parts.push("No Downhill");
+  if (link.paintTouch === "paint_yes") parts.push("Paint Touch");
+  if (link.paintTouch === "paint_no") parts.push("No Paint");
+  if (link.help === "help_yes") parts.push("Help");
+  if (link.help === "help_no") parts.push("No Help");
+  if (link.decision) parts.push(titleCase(link.decision));
+  if (link.passTarget) parts.push(`To ${titleCase(link.passTarget)}`);
 
   return parts.join(" · ");
 }
 
-function summarizeByCount<T extends string>(items: T[]) {
-  const counts = new Map<T, number>();
-  for (const item of items) counts.set(item, (counts.get(item) ?? 0) + 1);
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([key, count]) => `${key}: ${count}`);
+function chainToExportPossession(chain: PossessionChain): PossessionRecord {
+  const first = chain.links[0] ?? {};
+  const last = chain.links[chain.links.length - 1] ?? {};
+
+  return {
+    id: chain.id,
+    startAction: first.startAction,
+    side: first.side,
+    pressure: first.pressure,
+    paintTouch: first.paintTouch,
+    help: first.help,
+    decision: last.decision ?? first.decision,
+    passTarget: last.passTarget,
+    outcome: chain.outcome,
+  };
 }
 
 export default function Page() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [activeTab, setActiveTab] = useState<"review" | "insights" | "export">("review");
+
+  const [activeTab, setActiveTab] = useState<"review" | "export">("review");
   const [videoUrl, setVideoUrl] = useState("");
   const [videoName, setVideoName] = useState("No video selected");
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [records, setRecords] = useState<Record<string, PossessionRecord>>({});
+  const [chains, setChains] = useState<Record<string, PossessionChain>>({});
 
   const currentStep = REVIEW_STEPS[currentStepIndex];
-  const currentRecord = records[currentStep.id] ?? {};
-  const flowKeys = getFlowKeys(currentRecord);
+  const currentChain = chains[currentStep.id] ?? {
+    id: currentStep.id,
+    links: [{}],
+    outcome: undefined,
+  };
+
+  const activeLinkIndex = currentChain.links.length - 1;
+  const activeLink = currentChain.links[activeLinkIndex] ?? {};
+  const flowKeys = buildFlowKeys(activeLink);
 
   const currentQuestionIndex = flowKeys.findIndex((key) => {
     switch (key) {
       case "startAction":
-        return !currentRecord.startAction;
+        return !activeLink.startAction;
       case "side":
-        return !currentRecord.side;
+        return !activeLink.side;
       case "pressure":
-        return !currentRecord.pressure;
+        return !activeLink.pressure;
       case "paintTouch":
-        return !currentRecord.paintTouch;
+        return !activeLink.paintTouch;
       case "help":
-        return !currentRecord.help;
+        return !activeLink.help;
       case "decision":
-        return !currentRecord.decision;
+        return !activeLink.decision;
       case "passTarget":
-        return !currentRecord.passTarget;
+        return !activeLink.passTarget;
       case "outcome":
-        return !currentRecord.outcome;
+        return !currentChain.outcome;
     }
   });
 
   const activeQuestionKey =
-    currentQuestionIndex === -1 ? flowKeys[flowKeys.length - 1] : flowKeys[currentQuestionIndex];
+    currentQuestionIndex === -1
+      ? flowKeys[flowKeys.length - 1]
+      : flowKeys[currentQuestionIndex];
 
-  const questionMeta = getQuestionMeta(currentRecord, activeQuestionKey);
+  const questionMeta = getQuestionMeta(activeQuestionKey);
+
   const taggedCount = useMemo(
     () =>
-      Object.values(records).filter((record) => {
-        return Boolean(
-          record.startAction ||
-            record.side ||
-            record.pressure ||
-            record.paintTouch ||
-            record.help ||
-            record.decision ||
-            record.passTarget ||
-            record.outcome
+      Object.values(chains).filter((chain) => {
+        return chain.links.some((link) =>
+          Boolean(
+            link.startAction ||
+              link.side ||
+              link.pressure ||
+              link.paintTouch ||
+              link.help ||
+              link.decision ||
+              link.passTarget
+          )
         );
       }).length,
-    [records]
+    [chains]
   );
 
-  const completedCount = useMemo(
+  const reviewedPossessions = useMemo(
     () =>
-      REVIEW_STEPS.filter((step) => {
-        const record = records[step.id];
-        return Boolean(record?.outcome);
-      }).length,
-    [records]
+      REVIEW_STEPS.map((step) => chains[step.id])
+        .filter((chain): chain is PossessionChain => Boolean(chain?.outcome))
+        .map(chainToExportPossession),
+    [chains]
   );
 
-  const reviewedRecords = useMemo(
-    () =>
-      REVIEW_STEPS.map((step) => ({
-        step,
-        record: records[step.id] ?? {},
-      })).filter(({ record }) => record.outcome),
-    [records]
+  const sessionIntel = useMemo(
+    () => deriveSessionIntelligence(reviewedPossessions),
+    [reviewedPossessions]
   );
-
-  const downhillYes = reviewedRecords.filter(({ record }) => record.pressure === "downhill_yes").length;
-  const helpYes = reviewedRecords.filter(({ record }) => record.help === "help_yes").length;
-  const passDecisions = reviewedRecords.filter(({ record }) => record.decision === "pass").length;
-  const paintTouches = reviewedRecords.filter(({ record }) => record.paintTouch === "paint_yes").length;
-  const makes = reviewedRecords.filter(({ record }) => record.outcome === "make").length;
-
-  const downhillRate = completedCount ? Math.round((downhillYes / completedCount) * 100) : 0;
-  const helpRate = completedCount ? Math.round((helpYes / completedCount) * 100) : 0;
-  const passRate = completedCount ? Math.round((passDecisions / completedCount) * 100) : 0;
-  const paintRate = completedCount ? Math.round((paintTouches / completedCount) * 100) : 0;
-  const makeRate = completedCount ? Math.round((makes / completedCount) * 100) : 0;
-
-  const possessionStories = reviewedRecords.map(({ step, record }) => ({
-    id: step.id,
-    story: possessionSentence(record),
-  }));
-
-  const sideSummary = summarizeByCount(
-    reviewedRecords
-      .map(({ record }) => record.side)
-      .filter((value): value is Side => Boolean(value))
-      .map((value) => titleCase(value))
-  );
-
-  const passSummary = summarizeByCount(
-    reviewedRecords
-      .map(({ record }) => record.passTarget)
-      .filter((value): value is PassTarget => Boolean(value))
-      .map((value) => (value === "top" ? "Top" : titleCase(value)))
-  );
-
-  const exportPayload = {
-    session: {
-      totalReviewed: completedCount,
-      downhillRate,
-      helpRate,
-      passRate,
-      paintRate,
-      makeRate,
-    },
-    possessions: reviewedRecords.map(({ step, record }) => ({
-      id: step.id,
-      clipLabel: step.clipLabel,
-      sentence: possessionSentence(record),
-      ...record,
-    })),
-    summaries: {
-      sideSummary,
-      passSummary,
-    },
-  };
 
   function handlePickVideo() {
     fileInputRef.current?.click();
@@ -496,95 +404,184 @@ export default function Page() {
     if (!file) return;
 
     if (videoUrl) URL.revokeObjectURL(videoUrl);
-    const objectUrl = URL.createObjectURL(file);
 
+    const objectUrl = URL.createObjectURL(file);
     setVideoUrl(objectUrl);
     setVideoName(file.name);
   }
 
-  function patchRecord(patch: Partial<PossessionRecord>) {
-    setRecords((prev) => ({
-      ...prev,
-      [currentStep.id]: {
-        ...prev[currentStep.id],
+  function updateActiveLink(patch: Partial<LinkRecord>) {
+    setChains((prev) => {
+      const existing = prev[currentStep.id] ?? {
+        id: currentStep.id,
+        links: [{}],
+        outcome: undefined,
+      };
+
+      const nextLinks = [...existing.links];
+      nextLinks[activeLinkIndex] = {
+        ...nextLinks[activeLinkIndex],
         ...patch,
-      },
-    }));
+      };
+
+      return {
+        ...prev,
+        [currentStep.id]: {
+          ...existing,
+          links: nextLinks,
+        },
+      };
+    });
+  }
+
+  function setOutcome(outcome: Outcome) {
+    setChains((prev) => {
+      const existing = prev[currentStep.id] ?? {
+        id: currentStep.id,
+        links: [{}],
+        outcome: undefined,
+      };
+
+      return {
+        ...prev,
+        [currentStep.id]: {
+          ...existing,
+          outcome,
+        },
+      };
+    });
+
+    window.setTimeout(() => {
+      goNextPossession();
+    }, 140);
+  }
+
+  function startNextLink() {
+    setChains((prev) => {
+      const existing = prev[currentStep.id] ?? {
+        id: currentStep.id,
+        links: [{}],
+        outcome: undefined,
+      };
+
+      return {
+        ...prev,
+        [currentStep.id]: {
+          ...existing,
+          links: [...existing.links, {}],
+        },
+      };
+    });
   }
 
   function answerQuestion(value: string) {
-    if (activeQuestionKey === "startAction") patchRecord({ startAction: value as StartAction });
-    if (activeQuestionKey === "side") patchRecord({ side: value as Side });
-    if (activeQuestionKey === "pressure") patchRecord({ pressure: value as Pressure });
-    if (activeQuestionKey === "paintTouch") patchRecord({ paintTouch: value as PaintTouch });
-    if (activeQuestionKey === "help") patchRecord({ help: value as Help });
-    if (activeQuestionKey === "decision") {
-      const nextDecision = value as Decision;
-      if (nextDecision !== "pass") {
-        patchRecord({ decision: nextDecision, passTarget: undefined });
-      } else {
-        patchRecord({ decision: nextDecision });
-      }
+    if (activeQuestionKey === "startAction") {
+      updateActiveLink({ startAction: value as StartAction });
+      return;
     }
-    if (activeQuestionKey === "passTarget") patchRecord({ passTarget: value as PassTarget });
-    if (activeQuestionKey === "outcome") {
-      patchRecord({ outcome: value as Outcome });
+
+    if (activeQuestionKey === "side") {
+      updateActiveLink({ side: value as Side });
+      return;
+    }
+
+    if (activeQuestionKey === "pressure") {
+      updateActiveLink({ pressure: value as Pressure });
+      return;
+    }
+
+    if (activeQuestionKey === "paintTouch") {
+      updateActiveLink({ paintTouch: value as PaintTouch });
+      return;
+    }
+
+    if (activeQuestionKey === "help") {
+      updateActiveLink({ help: value as Help });
+      return;
+    }
+
+    if (activeQuestionKey === "decision") {
+      updateActiveLink({ decision: value as Decision });
+      return;
+    }
+
+    if (activeQuestionKey === "passTarget") {
+      updateActiveLink({ passTarget: value as PassTarget });
       window.setTimeout(() => {
-        goNextPossession();
-      }, 140);
+        startNextLink();
+      }, 120);
+      return;
+    }
+
+    if (activeQuestionKey === "outcome") {
+      setOutcome(value as Outcome);
     }
   }
 
   function undoCurrent() {
-    const record = currentRecord;
-    const keys = getFlowKeys(record);
+    setChains((prev) => {
+      const existing = prev[currentStep.id];
+      if (!existing) return prev;
 
-    let lastAnsweredKey: FlowQuestionKey | null = null;
+      const next = structuredClone(existing) as PossessionChain;
 
-    for (const key of keys) {
-      const hasValue =
-        (key === "startAction" && record.startAction) ||
-        (key === "side" && record.side) ||
-        (key === "pressure" && record.pressure) ||
-        (key === "paintTouch" && record.paintTouch) ||
-        (key === "help" && record.help) ||
-        (key === "decision" && record.decision) ||
-        (key === "passTarget" && record.passTarget) ||
-        (key === "outcome" && record.outcome);
-
-      if (hasValue) lastAnsweredKey = key;
-      else break;
-    }
-
-    if (!lastAnsweredKey) {
-      if (currentStepIndex > 0) {
-        setCurrentStepIndex((prev) => prev - 1);
+      if (next.outcome) {
+        next.outcome = undefined;
+        return { ...prev, [currentStep.id]: next };
       }
-      return;
-    }
 
-    const nextRecord = { ...record };
+      const lastLink = next.links[next.links.length - 1];
+      if (!lastLink) return prev;
 
-    if (lastAnsweredKey === "startAction") nextRecord.startAction = undefined;
-    if (lastAnsweredKey === "side") nextRecord.side = undefined;
-    if (lastAnsweredKey === "pressure") nextRecord.pressure = undefined;
-    if (lastAnsweredKey === "paintTouch") nextRecord.paintTouch = undefined;
-    if (lastAnsweredKey === "help") nextRecord.help = undefined;
-    if (lastAnsweredKey === "decision") {
-      nextRecord.decision = undefined;
-      nextRecord.passTarget = undefined;
-      nextRecord.outcome = undefined;
-    }
-    if (lastAnsweredKey === "passTarget") {
-      nextRecord.passTarget = undefined;
-      nextRecord.outcome = undefined;
-    }
-    if (lastAnsweredKey === "outcome") nextRecord.outcome = undefined;
+      if (
+        !lastLink.startAction &&
+        !lastLink.side &&
+        !lastLink.pressure &&
+        !lastLink.paintTouch &&
+        !lastLink.help &&
+        !lastLink.decision &&
+        !lastLink.passTarget &&
+        next.links.length > 1
+      ) {
+        next.links.pop();
+        return { ...prev, [currentStep.id]: next };
+      }
 
-    setRecords((prev) => ({
-      ...prev,
-      [currentStep.id]: nextRecord,
-    }));
+      if (lastLink.passTarget) {
+        lastLink.passTarget = undefined;
+        return { ...prev, [currentStep.id]: next };
+      }
+      if (lastLink.decision) {
+        lastLink.decision = undefined;
+        return { ...prev, [currentStep.id]: next };
+      }
+      if (lastLink.help) {
+        lastLink.help = undefined;
+        return { ...prev, [currentStep.id]: next };
+      }
+      if (lastLink.paintTouch) {
+        lastLink.paintTouch = undefined;
+        return { ...prev, [currentStep.id]: next };
+      }
+      if (lastLink.pressure) {
+        lastLink.pressure = undefined;
+        return { ...prev, [currentStep.id]: next };
+      }
+      if (lastLink.side) {
+        lastLink.side = undefined;
+        return { ...prev, [currentStep.id]: next };
+      }
+      if (lastLink.startAction) {
+        lastLink.startAction = undefined;
+        return { ...prev, [currentStep.id]: next };
+      }
+
+      if (currentStepIndex > 0) {
+        setCurrentStepIndex((v) => v - 1);
+      }
+
+      return prev;
+    });
   }
 
   function goNextPossession() {
@@ -592,10 +589,9 @@ export default function Page() {
       setCurrentStepIndex((prev) => prev + 1);
       return;
     }
-    setActiveTab("insights");
-  }
 
-  const currentSentence = possessionSentence(currentRecord);
+    setActiveTab("export");
+  }
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -606,7 +602,7 @@ export default function Page() {
               Axis
             </div>
             <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-              Review + Insights
+              Review + Export
             </h1>
           </div>
 
@@ -615,11 +611,6 @@ export default function Page() {
               active={activeTab === "review"}
               label="Review"
               onClick={() => setActiveTab("review")}
-            />
-            <SegmentedTab
-              active={activeTab === "insights"}
-              label="Insights"
-              onClick={() => setActiveTab("insights")}
             />
             <SegmentedTab
               active={activeTab === "export"}
@@ -685,21 +676,29 @@ export default function Page() {
                       <Chip>{currentStep.zoneLabel}</Chip>
                     </div>
 
-                    <div className="text-sm text-white/42">{currentStep.timeLabel}</div>
+                    <div className="text-sm text-white/42">
+                      {currentStep.timeLabel}
+                    </div>
                   </div>
                 </div>
 
                 <div className="space-y-5">
-                  <div>
-                    <div className="mb-2 text-xs uppercase tracking-[0.28em] text-white/32">
-                      {questionMeta.eyebrow}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="mb-2 text-xs uppercase tracking-[0.28em] text-white/32">
+                        {questionMeta.eyebrow}
+                      </div>
+                      <h2 className="text-[2.45rem] font-semibold leading-none tracking-tight sm:text-[3rem]">
+                        {questionMeta.title}
+                      </h2>
+                      <p className="mt-3 max-w-2xl text-base text-white/54">
+                        {questionMeta.subtitle}
+                      </p>
                     </div>
-                    <h2 className="text-[2.45rem] font-semibold leading-none tracking-tight sm:text-[3rem]">
-                      {questionMeta.title}
-                    </h2>
-                    <p className="mt-3 max-w-2xl text-base text-white/54">
-                      {questionMeta.subtitle}
-                    </p>
+
+                    <div className="hidden sm:block rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/72">
+                      Link {activeLinkIndex + 1}
+                    </div>
                   </div>
 
                   <div
@@ -712,14 +711,22 @@ export default function Page() {
                   >
                     {questionMeta.options.map((option) => {
                       const isActive =
-                        (activeQuestionKey === "startAction" && currentRecord.startAction === option.value) ||
-                        (activeQuestionKey === "side" && currentRecord.side === option.value) ||
-                        (activeQuestionKey === "pressure" && currentRecord.pressure === option.value) ||
-                        (activeQuestionKey === "paintTouch" && currentRecord.paintTouch === option.value) ||
-                        (activeQuestionKey === "help" && currentRecord.help === option.value) ||
-                        (activeQuestionKey === "decision" && currentRecord.decision === option.value) ||
-                        (activeQuestionKey === "passTarget" && currentRecord.passTarget === option.value) ||
-                        (activeQuestionKey === "outcome" && currentRecord.outcome === option.value);
+                        (activeQuestionKey === "startAction" &&
+                          activeLink.startAction === option.value) ||
+                        (activeQuestionKey === "side" &&
+                          activeLink.side === option.value) ||
+                        (activeQuestionKey === "pressure" &&
+                          activeLink.pressure === option.value) ||
+                        (activeQuestionKey === "paintTouch" &&
+                          activeLink.paintTouch === option.value) ||
+                        (activeQuestionKey === "help" &&
+                          activeLink.help === option.value) ||
+                        (activeQuestionKey === "decision" &&
+                          activeLink.decision === option.value) ||
+                        (activeQuestionKey === "passTarget" &&
+                          activeLink.passTarget === option.value) ||
+                        (activeQuestionKey === "outcome" &&
+                          currentChain.outcome === option.value);
 
                       return (
                         <ChoiceButton
@@ -734,11 +741,30 @@ export default function Page() {
                   </div>
 
                   <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-                    <div className="mb-2 text-xs uppercase tracking-[0.28em] text-white/35">
-                      Possession story
+                    <div className="mb-3 text-xs uppercase tracking-[0.28em] text-white/35">
+                      Possession chain
                     </div>
-                    <div className="text-lg leading-8 text-white/86">
-                      {currentSentence || "Start tapping to build the possession story."}
+
+                    <div className="space-y-3">
+                      {currentChain.links.map((link, index) => (
+                        <div
+                          key={index}
+                          className="rounded-[18px] border border-white/8 bg-black/40 p-4"
+                        >
+                          <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/35">
+                            Link {index + 1}
+                          </div>
+                          <div className="text-sm leading-7 text-white/82">
+                            {linkSentence(link) || "Waiting for input"}
+                          </div>
+                        </div>
+                      ))}
+
+                      {currentChain.outcome ? (
+                        <div className="rounded-[18px] border border-lime-300/20 bg-lime-300/10 p-4 text-sm text-white/88">
+                          Final Outcome · {titleCase(currentChain.outcome.replaceAll("_", " "))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -748,29 +774,31 @@ export default function Page() {
             <aside className="hidden xl:block">
               <div className="rounded-[28px] border border-white/8 bg-white/[0.03] p-5">
                 <div className="mb-3 text-xs uppercase tracking-[0.28em] text-white/35">
-                  Grammar
+                  Chain logic
                 </div>
 
                 <h3 className="text-3xl font-semibold tracking-tight">
-                  Tell the possession to the machine
+                  Tell the possession as linked actions
                 </h3>
 
                 <p className="mt-4 max-w-sm text-base leading-7 text-white/68">
-                  One answer at a time. The taps become structure. The structure becomes export.
+                  A pass does not end the possession. It closes one link and starts the next one.
                 </p>
 
                 <div className="mt-8 space-y-3">
-                  <InfoPill>Action → side → pressure → paint</InfoPill>
-                  <InfoPill>Help → decision → pass target</InfoPill>
-                  <InfoPill>Outcome closes the possession story</InfoPill>
+                  <InfoPill>Decision = pass → next link begins</InfoPill>
+                  <InfoPill>Decision = finish/reset → ask final outcome</InfoPill>
+                  <InfoPill>Export reads the full chain, not one flat tag set</InfoPill>
                 </div>
 
-                <div className="mt-8">
-                  <div className="mb-3 text-xs uppercase tracking-[0.28em] text-white/35">
-                    Current clip
+                <div className="mt-8 rounded-[24px] border border-white/8 bg-black/40 p-4">
+                  <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/35">
+                    Session snapshot
                   </div>
-                  <div className="rounded-[24px] border border-white/8 bg-black/40 p-4 text-sm leading-7 text-white/82">
-                    {currentSentence || "No possession story yet."}
+                  <div className="space-y-2 text-sm text-white/78">
+                    <div>Reviewed: {sessionIntel.total}</div>
+                    <div>Advantage: {sessionIntel.advantageRate}%</div>
+                    <div>Breakdown: {sessionIntel.breakdownRate}%</div>
                   </div>
                 </div>
 
@@ -783,111 +811,9 @@ export default function Page() {
               </div>
             </aside>
           </div>
-        ) : null}
-
-        {activeTab === "insights" ? (
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-            <section className="rounded-[28px] border border-white/8 bg-white/[0.03] p-5">
-              <div className="space-y-1">
-                <StatRow label="Reviewed moments" value={completedCount} />
-                <StatRow label="Downhill rate" value={`${downhillRate}%`} />
-                <StatRow label="Paint touch rate" value={`${paintRate}%`} />
-                <StatRow label="Help rate" value={`${helpRate}%`} />
-                <StatRow label="Pass rate" value={`${passRate}%`} />
-                <StatRow label="Make rate" value={`${makeRate}%`} noBorder />
-              </div>
-
-              <div className="mt-8 rounded-[28px] border border-white/8 bg-black/40 p-5">
-                <div className="mb-3 text-xs uppercase tracking-[0.28em] text-white/35">
-                  Pattern read
-                </div>
-
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="mb-2 text-2xl font-semibold">
-                      What created pressure
-                    </h4>
-                    <p className="text-base leading-7 text-white/70">
-                      Downhill showed up on {downhillRate}% of reviewed possessions. Paint touch showed up on {paintRate}%.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h4 className="mb-2 text-2xl font-semibold">
-                      What happened when help came
-                    </h4>
-                    <p className="text-base leading-7 text-white/70">
-                      Help appeared on {helpRate}% of reviewed possessions. Pass decisions showed up on {passRate}%.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h4 className="mb-2 text-2xl font-semibold">
-                      Shot context
-                    </h4>
-                    <p className="text-base leading-7 text-white/70">
-                      Makes landed at {makeRate}% across completed possession records.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <aside className="rounded-[28px] border border-white/8 bg-white/[0.03] p-5">
-              <div className="mb-3 text-xs uppercase tracking-[0.28em] text-white/35">
-                Possession stories
-              </div>
-
-              <div className="space-y-3">
-                {possessionStories.length ? (
-                  possessionStories.map((item) => (
-                    <InfoPill key={item.id}>{item.story}</InfoPill>
-                  ))
-                ) : (
-                  <InfoPill>No completed possession stories yet.</InfoPill>
-                )}
-              </div>
-            </aside>
-          </div>
-        ) : null}
-
-        {activeTab === "export" ? (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              <ExportCard
-                title="Possession stories"
-                body={
-                  possessionStories.length
-                    ? possessionStories.map((item) => `#${item.id} ${item.story}`).join("\n")
-                    : "No completed possession stories yet."
-                }
-              />
-
-              <ExportCard
-                title="Session summary"
-                body={[
-                  `Reviewed moments: ${completedCount}`,
-                  `Downhill rate: ${downhillRate}%`,
-                  `Paint touch rate: ${paintRate}%`,
-                  `Help rate: ${helpRate}%`,
-                  `Pass rate: ${passRate}%`,
-                  `Make rate: ${makeRate}%`,
-                  "",
-                  "Side summary:",
-                  ...(sideSummary.length ? sideSummary : ["No side data"]),
-                  "",
-                  "Pass summary:",
-                  ...(passSummary.length ? passSummary : ["No pass target data"]),
-                ].join("\n")}
-              />
-            </div>
-
-            <ExportCard
-              title="Export JSON"
-              body={JSON.stringify(exportPayload, null, 2)}
-            />
-          </div>
-        ) : null}
+        ) : (
+          <ExportReport possessions={reviewedPossessions} />
+        )}
       </div>
 
       {activeTab === "review" ? (
