@@ -165,8 +165,8 @@ function ChoiceButton({
         active && tone === "lime"
           ? "border-lime-300 bg-lime-300 text-black shadow-[0_0_28px_rgba(190,242,100,0.18)]"
           : active
-          ? "border-white/20 bg-white text-black"
-          : "border-white/10 bg-white/[0.05] text-white hover:bg-white/[0.08]"
+            ? "border-white/20 bg-white text-black"
+            : "border-white/10 bg-white/[0.05] text-white hover:bg-white/[0.08]"
       )}
     >
       <div className="flex items-center justify-between gap-3">
@@ -309,7 +309,8 @@ function linkSentence(link: LinkRecord) {
   if (link.help === "help_yes") parts.push("Help");
   if (link.help === "help_no") parts.push("No Help");
   if (link.decision) parts.push(titleCase(link.decision));
- if (link.passTarget) parts.push(`To ${titleCase(link.passTarget)}`);
+  if (link.passTarget) parts.push(`To ${titleCase(link.passTarget)}`);
+
   return parts.join(" · ");
 }
 
@@ -549,7 +550,7 @@ export default function Page() {
       const existing = prev[currentStep.id];
       if (!existing) return prev;
 
-      const next = structuredClone(existing) as PossessionChain;
+      const next: PossessionChain = JSON.parse(JSON.stringify(existing));
 
       if (next.outcome) {
         next.outcome = undefined;
@@ -728,7 +729,9 @@ export default function Page() {
                         <QuickChip
                           key={option.value}
                           active={activeLink.paintTouch === option.value}
-                          label={option.label === "Paint Touch" ? "Paint" : "No Paint"}
+                          label={
+                            option.label === "Paint Touch" ? "Paint" : "No Paint"
+                          }
                           onClick={() => quickSetPaintTouch(option.value)}
                         />
                       ))}
@@ -816,7 +819,8 @@ export default function Page() {
 
                       {currentChain.outcome ? (
                         <div className="rounded-[18px] border border-lime-300/20 bg-lime-300/10 p-4 text-sm text-white/88">
-                          Final Outcome · {titleCase(currentChain.outcome.replaceAll("_", " "))}
+                          Final Outcome ·{" "}
+                          {titleCase(currentChain.outcome.replaceAll("_", " "))}
                         </div>
                       ) : null}
                     </div>
@@ -836,7 +840,8 @@ export default function Page() {
                 </h3>
 
                 <p className="mt-4 max-w-sm text-base leading-7 text-white/68">
-                  The top chips now control the active link. They are not just labels anymore.
+                  The top chips now control the active link. They are not just
+                  labels anymore.
                 </p>
 
                 <div className="mt-8 space-y-3">
@@ -866,7 +871,10 @@ export default function Page() {
             </aside>
           </div>
         ) : (
-          <ExportReport possessions={reviewedPossessions} />
+          <ExportReport
+            possessions={reviewedPossessions}
+            videoUrl={videoUrl}
+          />
         )}
       </div>
 

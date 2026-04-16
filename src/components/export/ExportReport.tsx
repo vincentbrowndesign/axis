@@ -14,6 +14,8 @@ type ExportReportProps = {
   title?: string;
   subtitle?: string;
   possessions: PossessionRecord[];
+  videoUrl?: string;
+  thumbnailUrl?: string;
 };
 
 type ExportView = "card" | "report";
@@ -446,9 +448,53 @@ function ReportView({
   );
 }
 
+function CardMedia({
+  videoUrl,
+  thumbnailUrl,
+}: {
+  videoUrl?: string;
+  thumbnailUrl?: string;
+}) {
+  if (thumbnailUrl) {
+    return (
+      <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[30px] border border-white/8 bg-black">
+        <img
+          src={thumbnailUrl}
+          alt="Session thumbnail"
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+      </div>
+    );
+  }
+
+  if (videoUrl) {
+    return (
+      <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[30px] border border-white/8 bg-black">
+        <video
+          src={videoUrl}
+          muted
+          playsInline
+          preload="metadata"
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[30px] border border-white/8 bg-[radial-gradient(circle_at_top,rgba(190,242,100,0.12),transparent_30%)]">
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+    </div>
+  );
+}
+
 function CardView({
   session,
   derivedPossessions,
+  videoUrl,
+  thumbnailUrl,
 }: {
   session: ReturnType<typeof deriveSessionIntelligence>;
   derivedPossessions: Array<{
@@ -456,6 +502,8 @@ function CardView({
     record: PossessionRecord;
     intelligence: ReturnType<typeof derivePossessionIntelligence>;
   }>;
+  videoUrl?: string;
+  thumbnailUrl?: string;
 }) {
   const tags = shareTags(session);
   const story = socialStory(session);
@@ -464,42 +512,66 @@ function CardView({
 
   return (
     <div className="mx-auto w-full max-w-[760px] overflow-hidden rounded-[40px] border border-white/8 bg-black">
-      <div className="bg-[radial-gradient(circle_at_top,rgba(190,242,100,0.16),transparent_30%)] p-6 sm:p-8">
-        <div className="mb-8 flex items-start justify-between gap-4">
-          <div>
-            <div className="mb-2 text-xs uppercase tracking-[0.32em] text-white/30">
-              Axis
-            </div>
-            <h2 className="text-[2.4rem] font-semibold tracking-tight sm:text-[3.5rem]">
-              Possession Profile
-            </h2>
-            <p className="mt-3 max-w-xl text-base leading-7 text-white/58 sm:text-lg">
-              Shareable proof from one session.
-            </p>
-          </div>
+      <div className="p-4 sm:p-5">
+        <div className="relative">
+          <CardMedia videoUrl={videoUrl} thumbnailUrl={thumbnailUrl} />
 
-          <div className="rounded-[26px] bg-lime-300 px-5 py-4 text-black">
-            <div className="text-sm font-medium">Reviewed</div>
-            <div className="text-3xl font-semibold leading-none">
-              {session.total}
+          <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="mb-2 text-xs uppercase tracking-[0.32em] text-white/55">
+                  Axis
+                </div>
+                <h2 className="text-[2rem] font-semibold leading-none tracking-tight text-white sm:text-[2.8rem]">
+                  Possession Profile
+                </h2>
+              </div>
+
+              <div className="rounded-[22px] bg-lime-300 px-4 py-3 text-black shadow-[0_0_20px_rgba(190,242,100,0.18)]">
+                <div className="text-xs font-medium uppercase tracking-[0.16em]">
+                  Reviewed
+                </div>
+                <div className="mt-1 text-3xl font-semibold leading-none">
+                  {session.total}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="max-w-2xl">
+                <div className="mb-2 text-xs uppercase tracking-[0.24em] text-white/50">
+                  Session Story
+                </div>
+                <p className="text-[1.8rem] leading-[1.08] text-white sm:text-[2.7rem]">
+                  {story}
+                </p>
+                <p className="mt-3 max-w-xl text-sm leading-6 text-white/72 sm:text-base sm:leading-7">
+                  {subline}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {tags.length ? (
+                  tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full border border-white/12 bg-black/40 px-4 py-2 text-sm text-white backdrop-blur-sm"
+                    >
+                      {tag}
+                    </span>
+                  ))
+                ) : (
+                  <span className="rounded-full border border-white/12 bg-black/40 px-4 py-2 text-sm text-white/70 backdrop-blur-sm">
+                    No tags yet
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="rounded-[30px] border border-white/8 bg-white/[0.04] p-6 sm:p-7">
-          <div className="mb-3 text-xs uppercase tracking-[0.24em] text-white/35">
-            Session Story
-          </div>
-          <p className="text-[2rem] leading-[1.2] text-white/95 sm:text-[2.75rem]">
-            {story}
-          </p>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-white/62 sm:text-lg">
-            {subline}
-          </p>
-        </div>
-
-        <div className="mt-6 grid grid-cols-2 gap-4">
-          <div className="rounded-[26px] border border-white/8 bg-white/[0.04] p-5">
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
             <div className="text-xs uppercase tracking-[0.22em] text-white/35">
               Downhill
             </div>
@@ -508,25 +580,7 @@ function CardView({
             </div>
           </div>
 
-          <div className="rounded-[26px] border border-white/8 bg-white/[0.04] p-5">
-            <div className="text-xs uppercase tracking-[0.22em] text-white/35">
-              Paint
-            </div>
-            <div className="mt-3 text-5xl font-semibold sm:text-6xl">
-              {session.paintTouchRate}%
-            </div>
-          </div>
-
-          <div className="rounded-[26px] border border-white/8 bg-white/[0.04] p-5">
-            <div className="text-xs uppercase tracking-[0.22em] text-white/35">
-              Help
-            </div>
-            <div className="mt-3 text-5xl font-semibold sm:text-6xl">
-              {session.helpRate}%
-            </div>
-          </div>
-
-          <div className="rounded-[26px] border border-white/8 bg-white/[0.04] p-5">
+          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
             <div className="text-xs uppercase tracking-[0.22em] text-white/35">
               Advantage
             </div>
@@ -536,36 +590,16 @@ function CardView({
           </div>
         </div>
 
-        <div className="mt-6 rounded-[30px] border border-white/8 bg-white/[0.04] p-6 sm:p-7">
+        <div className="mt-4 rounded-[26px] border border-white/8 bg-white/[0.04] p-5 sm:p-6">
           <div className="mb-3 text-xs uppercase tracking-[0.24em] text-white/35">
             Best Possession Line
           </div>
-          <p className="text-xl leading-8 text-white/88 sm:text-2xl">
+          <p className="text-lg leading-8 text-white/88 sm:text-2xl sm:leading-10">
             {topLine}
           </p>
         </div>
 
-        <div className="mt-6 rounded-[30px] border border-white/8 bg-white/[0.04] p-6 sm:p-7">
-          <div className="mb-4 text-xs uppercase tracking-[0.24em] text-white/35">
-            Session Tags
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {tags.length ? (
-              tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-base text-white/88"
-                >
-                  {tag}
-                </span>
-              ))
-            ) : (
-              <span className="text-white/45">No tags yet.</span>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-6 flex items-center justify-between gap-4 text-sm text-white/42">
+        <div className="mt-4 flex items-center justify-between gap-4 text-sm text-white/42">
           <span>Performance becomes fact.</span>
           <span>Axis</span>
         </div>
@@ -578,6 +612,8 @@ export default function ExportReport({
   title = "Session Report",
   subtitle = "Structured possession taps turned into a readable visual report.",
   possessions,
+  videoUrl,
+  thumbnailUrl,
 }: ExportReportProps) {
   const reportRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -672,6 +708,8 @@ export default function ExportReport({
           <CardView
             session={session}
             derivedPossessions={derivedPossessions}
+            videoUrl={videoUrl}
+            thumbnailUrl={thumbnailUrl}
           />
         </div>
       </div>
