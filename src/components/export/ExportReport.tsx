@@ -191,23 +191,31 @@ function socialStory(session: ReturnType<typeof deriveSessionIntelligence>) {
   }
 
   if (session.advantageRate >= 60 && session.makeRate >= 50) {
-    return "Pressure showed up and the possession quality held together.";
+    return "Pressure showed up and the session held together.";
   }
 
-  if (session.downhillRate >= 60 && session.paintTouchRate >= 50 && session.makeRate < 40) {
+  if (
+    session.downhillRate >= 60 &&
+    session.paintTouchRate >= 50 &&
+    session.makeRate < 40
+  ) {
     return "They got into the teeth of the defense. The finish just did not come with it yet.";
   }
 
-  if (session.downhillRate >= 60 && session.helpRate >= 40 && session.passRate < 30) {
+  if (
+    session.downhillRate >= 60 &&
+    session.helpRate >= 40 &&
+    session.passRate < 30
+  ) {
     return "The pressure was real. The next read can get cleaner.";
   }
 
   if (session.downhillRate < 35) {
-    return "The first defender is still too comfortable.";
+    return "The first defender stayed a little too comfortable.";
   }
 
   if (session.paintTouchRate < 40) {
-    return "The action needs to get deeper into the floor.";
+    return "The action did not get deep enough into the floor often enough.";
   }
 
   if (session.breakdownRate >= 25) {
@@ -215,6 +223,14 @@ function socialStory(session: ReturnType<typeof deriveSessionIntelligence>) {
   }
 
   return "The session showed real pieces. Now it is about stacking them more consistently.";
+}
+
+function socialSubline(session: ReturnType<typeof deriveSessionIntelligence>) {
+  if (!session.total) return "Start a run and build the first profile.";
+  if (session.advantageRate >= 60) return "The pressure profile is starting to show itself.";
+  if (session.breakdownRate >= 25) return "The next step is reducing how often possessions stall or break.";
+  if (session.paintTouchRate >= 50) return "The floor is being touched where it matters.";
+  return "The shape is there. The consistency is next.";
 }
 
 function shareTags(session: ReturnType<typeof deriveSessionIntelligence>) {
@@ -226,11 +242,26 @@ function shareTags(session: ReturnType<typeof deriveSessionIntelligence>) {
           "Missed Opportunity",
           "Reset Under No Pressure",
           "No Advantage",
+          "Reset",
         ].includes(tag)
     )
     .slice(0, 4);
 
   return preferred.length ? preferred : session.topTags.slice(0, 4).map((item) => item.tag);
+}
+
+function topPossessionLine(
+  derivedPossessions: Array<{
+    id: string | number;
+    intelligence: ReturnType<typeof derivePossessionIntelligence>;
+  }>
+) {
+  const strongest =
+    derivedPossessions.find((p) => p.intelligence.state === "advantage") ??
+    derivedPossessions[0];
+
+  if (!strongest) return "No possession story yet.";
+  return strongest.intelligence.story;
 }
 
 function ReportView({
@@ -417,74 +448,104 @@ function ReportView({
 
 function CardView({
   session,
+  derivedPossessions,
 }: {
   session: ReturnType<typeof deriveSessionIntelligence>;
+  derivedPossessions: Array<{
+    id: string | number;
+    record: PossessionRecord;
+    intelligence: ReturnType<typeof derivePossessionIntelligence>;
+  }>;
 }) {
   const tags = shareTags(session);
   const story = socialStory(session);
+  const subline = socialSubline(session);
+  const topLine = topPossessionLine(derivedPossessions);
 
   return (
-    <div className="mx-auto w-full max-w-[720px] overflow-hidden rounded-[36px] border border-white/8 bg-black">
-      <div className="bg-[radial-gradient(circle_at_top,rgba(190,242,100,0.16),transparent_32%)] p-6 sm:p-8">
+    <div className="mx-auto w-full max-w-[760px] overflow-hidden rounded-[40px] border border-white/8 bg-black">
+      <div className="bg-[radial-gradient(circle_at_top,rgba(190,242,100,0.16),transparent_30%)] p-6 sm:p-8">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <div className="mb-2 text-xs uppercase tracking-[0.32em] text-white/30">
               Axis
             </div>
-            <h2 className="text-3xl font-semibold tracking-tight sm:text-5xl">
+            <h2 className="text-[2.4rem] font-semibold tracking-tight sm:text-[3.5rem]">
               Possession Profile
             </h2>
-            <p className="mt-3 max-w-xl text-lg leading-8 text-white/62">
-              A clean read on how the session held together.
+            <p className="mt-3 max-w-xl text-base leading-7 text-white/58 sm:text-lg">
+              Shareable proof from one session.
             </p>
           </div>
 
-          <div className="rounded-[24px] bg-lime-300 px-5 py-4 text-black">
-            <div className="text-sm font-medium">{session.total}</div>
-            <div className="text-2xl font-semibold leading-none">possessions</div>
+          <div className="rounded-[26px] bg-lime-300 px-5 py-4 text-black">
+            <div className="text-sm font-medium">Reviewed</div>
+            <div className="text-3xl font-semibold leading-none">
+              {session.total}
+            </div>
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-white/8 bg-white/[0.04] p-5 sm:p-6">
+        <div className="rounded-[30px] border border-white/8 bg-white/[0.04] p-6 sm:p-7">
           <div className="mb-3 text-xs uppercase tracking-[0.24em] text-white/35">
             Session Story
           </div>
-          <p className="text-2xl leading-[1.45] text-white/92 sm:text-[2rem]">
+          <p className="text-[2rem] leading-[1.2] text-white/95 sm:text-[2.75rem]">
             {story}
+          </p>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-white/62 sm:text-lg">
+            {subline}
           </p>
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-4">
-          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+          <div className="rounded-[26px] border border-white/8 bg-white/[0.04] p-5">
             <div className="text-xs uppercase tracking-[0.22em] text-white/35">
               Downhill
             </div>
-            <div className="mt-3 text-5xl font-semibold">{session.downhillRate}%</div>
+            <div className="mt-3 text-5xl font-semibold sm:text-6xl">
+              {session.downhillRate}%
+            </div>
           </div>
 
-          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+          <div className="rounded-[26px] border border-white/8 bg-white/[0.04] p-5">
             <div className="text-xs uppercase tracking-[0.22em] text-white/35">
               Paint
             </div>
-            <div className="mt-3 text-5xl font-semibold">{session.paintTouchRate}%</div>
+            <div className="mt-3 text-5xl font-semibold sm:text-6xl">
+              {session.paintTouchRate}%
+            </div>
           </div>
 
-          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+          <div className="rounded-[26px] border border-white/8 bg-white/[0.04] p-5">
             <div className="text-xs uppercase tracking-[0.22em] text-white/35">
               Help
             </div>
-            <div className="mt-3 text-5xl font-semibold">{session.helpRate}%</div>
+            <div className="mt-3 text-5xl font-semibold sm:text-6xl">
+              {session.helpRate}%
+            </div>
           </div>
 
-          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+          <div className="rounded-[26px] border border-white/8 bg-white/[0.04] p-5">
             <div className="text-xs uppercase tracking-[0.22em] text-white/35">
               Advantage
             </div>
-            <div className="mt-3 text-5xl font-semibold">{session.advantageRate}%</div>
+            <div className="mt-3 text-5xl font-semibold sm:text-6xl">
+              {session.advantageRate}%
+            </div>
           </div>
         </div>
 
-        <div className="mt-6 rounded-[28px] border border-white/8 bg-white/[0.04] p-5 sm:p-6">
+        <div className="mt-6 rounded-[30px] border border-white/8 bg-white/[0.04] p-6 sm:p-7">
+          <div className="mb-3 text-xs uppercase tracking-[0.24em] text-white/35">
+            Best Possession Line
+          </div>
+          <p className="text-xl leading-8 text-white/88 sm:text-2xl">
+            {topLine}
+          </p>
+        </div>
+
+        <div className="mt-6 rounded-[30px] border border-white/8 bg-white/[0.04] p-6 sm:p-7">
           <div className="mb-4 text-xs uppercase tracking-[0.24em] text-white/35">
             Session Tags
           </div>
@@ -502,6 +563,11 @@ function CardView({
               <span className="text-white/45">No tags yet.</span>
             )}
           </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-between gap-4 text-sm text-white/42">
+          <span>Performance becomes fact.</span>
+          <span>Axis</span>
         </div>
       </div>
     </div>
@@ -597,13 +663,16 @@ export default function ExportReport({
 
       <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4 text-sm text-white/60">
         {view === "card"
-          ? "Card is the clean social version."
+          ? "Card is the clean share version."
           : "Report is the full session breakdown."}
       </div>
 
       <div className={view === "card" ? "block" : "hidden"}>
         <div ref={cardRef}>
-          <CardView session={session} />
+          <CardView
+            session={session}
+            derivedPossessions={derivedPossessions}
+          />
         </div>
       </div>
 
