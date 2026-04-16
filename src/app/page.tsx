@@ -10,8 +10,6 @@ import {
 type ReviewStep = {
   id: string;
   clipLabel: string;
-  actionLabel: string;
-  zoneLabel: string;
   timeLabel: string;
 };
 
@@ -57,14 +55,14 @@ type Option<T extends string> = {
 };
 
 const REVIEW_STEPS: ReviewStep[] = [
-  { id: "1", clipLabel: "Clip 1", actionLabel: "Drive", zoneLabel: "Paint", timeLabel: "0:07" },
-  { id: "2", clipLabel: "Clip 2", actionLabel: "Pass", zoneLabel: "Wing", timeLabel: "0:05" },
-  { id: "3", clipLabel: "Clip 3", actionLabel: "Drive", zoneLabel: "Paint", timeLabel: "0:06" },
-  { id: "4", clipLabel: "Clip 4", actionLabel: "Shot", zoneLabel: "Wing", timeLabel: "0:04" },
-  { id: "5", clipLabel: "Clip 5", actionLabel: "Drive", zoneLabel: "Paint", timeLabel: "0:08" },
-  { id: "6", clipLabel: "Clip 6", actionLabel: "Pass", zoneLabel: "Corner", timeLabel: "0:05" },
-  { id: "7", clipLabel: "Clip 7", actionLabel: "Shot", zoneLabel: "Corner", timeLabel: "0:03" },
-  { id: "8", clipLabel: "Clip 8", actionLabel: "Drive", zoneLabel: "Rim", timeLabel: "0:06" },
+  { id: "1", clipLabel: "Clip 1", timeLabel: "0:07" },
+  { id: "2", clipLabel: "Clip 2", timeLabel: "0:05" },
+  { id: "3", clipLabel: "Clip 3", timeLabel: "0:06" },
+  { id: "4", clipLabel: "Clip 4", timeLabel: "0:04" },
+  { id: "5", clipLabel: "Clip 5", timeLabel: "0:08" },
+  { id: "6", clipLabel: "Clip 6", timeLabel: "0:05" },
+  { id: "7", clipLabel: "Clip 7", timeLabel: "0:03" },
+  { id: "8", clipLabel: "Clip 8", timeLabel: "0:06" },
 ];
 
 const START_ACTION_OPTIONS: Option<StartAction>[] = [
@@ -184,11 +182,28 @@ function ChoiceButton({
   );
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
+function QuickChip({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs uppercase tracking-[0.24em] text-white/70">
-      {children}
-    </span>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-full border px-4 py-2 text-xs uppercase tracking-[0.22em] transition",
+        active
+          ? "border-lime-300 bg-lime-300 text-black"
+          : "border-white/10 bg-white/[0.04] text-white/72 hover:bg-white/[0.08]"
+      )}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -294,8 +309,7 @@ function linkSentence(link: LinkRecord) {
   if (link.help === "help_yes") parts.push("Help");
   if (link.help === "help_no") parts.push("No Help");
   if (link.decision) parts.push(titleCase(link.decision));
-  if (link.passTarget) parts.push(`To ${titleCase(link.passTarget)}`);
-
+ if (link.passTarget) parts.push(`To ${titleCase(link.passTarget)}`);
   return parts.join(" · ");
 }
 
@@ -518,6 +532,18 @@ export default function Page() {
     }
   }
 
+  function quickSetStartAction(action: StartAction) {
+    updateActiveLink({ startAction: action });
+  }
+
+  function quickSetSide(side: Side) {
+    updateActiveLink({ side });
+  }
+
+  function quickSetPaintTouch(value: PaintTouch) {
+    updateActiveLink({ paintTouch: value });
+  }
+
   function undoCurrent() {
     setChains((prev) => {
       const existing = prev[currentStep.id];
@@ -670,14 +696,42 @@ export default function Page() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 border-t border-white/8 px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Chip>{currentStep.actionLabel}</Chip>
-                      <Chip>{currentStep.zoneLabel}</Chip>
+                  <div className="flex flex-col gap-3 border-t border-white/8 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        {START_ACTION_OPTIONS.map((option) => (
+                          <QuickChip
+                            key={option.value}
+                            active={activeLink.startAction === option.value}
+                            label={option.label}
+                            onClick={() => quickSetStartAction(option.value)}
+                          />
+                        ))}
+                      </div>
+
+                      <div className="text-sm text-white/42">
+                        {currentStep.timeLabel}
+                      </div>
                     </div>
 
-                    <div className="text-sm text-white/42">
-                      {currentStep.timeLabel}
+                    <div className="flex flex-wrap gap-2">
+                      {SIDE_OPTIONS.map((option) => (
+                        <QuickChip
+                          key={option.value}
+                          active={activeLink.side === option.value}
+                          label={option.label}
+                          onClick={() => quickSetSide(option.value)}
+                        />
+                      ))}
+
+                      {PAINT_TOUCH_OPTIONS.map((option) => (
+                        <QuickChip
+                          key={option.value}
+                          active={activeLink.paintTouch === option.value}
+                          label={option.label === "Paint Touch" ? "Paint" : "No Paint"}
+                          onClick={() => quickSetPaintTouch(option.value)}
+                        />
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -778,17 +832,17 @@ export default function Page() {
                 </div>
 
                 <h3 className="text-3xl font-semibold tracking-tight">
-                  Tell the possession as linked actions
+                  Use the video as input
                 </h3>
 
                 <p className="mt-4 max-w-sm text-base leading-7 text-white/68">
-                  A pass does not end the possession. It closes one link and starts the next one.
+                  The top chips now control the active link. They are not just labels anymore.
                 </p>
 
                 <div className="mt-8 space-y-3">
-                  <InfoPill>Decision = pass → next link begins</InfoPill>
-                  <InfoPill>Decision = finish/reset → ask final outcome</InfoPill>
-                  <InfoPill>Export reads the full chain, not one flat tag set</InfoPill>
+                  <InfoPill>Top row = start action</InfoPill>
+                  <InfoPill>Second row = side + paint context</InfoPill>
+                  <InfoPill>Pass still starts the next link</InfoPill>
                 </div>
 
                 <div className="mt-8 rounded-[24px] border border-white/8 bg-black/40 p-4">

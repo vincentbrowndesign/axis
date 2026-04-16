@@ -16,7 +16,7 @@ type ExportReportProps = {
   possessions: PossessionRecord[];
 };
 
-type ExportView = "report" | "card";
+type ExportView = "card" | "report";
 
 function pct(num: number, total: number) {
   if (!total) return 0;
@@ -124,21 +124,21 @@ function ViewToggle({
     <div className="inline-flex rounded-full bg-white/[0.05] p-1">
       <button
         type="button"
-        onClick={() => onChange("report")}
-        className={`rounded-full px-5 py-3 text-sm transition ${
-          value === "report" ? "bg-white text-black" : "text-white/65 hover:text-white"
-        }`}
-      >
-        Report
-      </button>
-      <button
-        type="button"
         onClick={() => onChange("card")}
         className={`rounded-full px-5 py-3 text-sm transition ${
           value === "card" ? "bg-white text-black" : "text-white/65 hover:text-white"
         }`}
       >
         Card
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("report")}
+        className={`rounded-full px-5 py-3 text-sm transition ${
+          value === "report" ? "bg-white text-black" : "text-white/65 hover:text-white"
+        }`}
+      >
+        Report
       </button>
     </div>
   );
@@ -185,17 +185,61 @@ function FormatButtons({
   );
 }
 
+function socialStory(session: ReturnType<typeof deriveSessionIntelligence>) {
+  if (!session.total) {
+    return "No possessions reviewed yet.";
+  }
+
+  if (session.advantageRate >= 60 && session.makeRate >= 50) {
+    return "Pressure showed up and the possession quality held together.";
+  }
+
+  if (session.downhillRate >= 60 && session.paintTouchRate >= 50 && session.makeRate < 40) {
+    return "They got into the teeth of the defense. The finish just did not come with it yet.";
+  }
+
+  if (session.downhillRate >= 60 && session.helpRate >= 40 && session.passRate < 30) {
+    return "The pressure was real. The next read can get cleaner.";
+  }
+
+  if (session.downhillRate < 35) {
+    return "The first defender is still too comfortable.";
+  }
+
+  if (session.paintTouchRate < 40) {
+    return "The action needs to get deeper into the floor.";
+  }
+
+  if (session.breakdownRate >= 25) {
+    return "There were flashes, but too many possessions broke before the finish.";
+  }
+
+  return "The session showed real pieces. Now it is about stacking them more consistently.";
+}
+
+function shareTags(session: ReturnType<typeof deriveSessionIntelligence>) {
+  const preferred = session.topTags
+    .map((item) => item.tag)
+    .filter(
+      (tag) =>
+        ![
+          "Missed Opportunity",
+          "Reset Under No Pressure",
+          "No Advantage",
+        ].includes(tag)
+    )
+    .slice(0, 4);
+
+  return preferred.length ? preferred : session.topTags.slice(0, 4).map((item) => item.tag);
+}
+
 function ReportView({
-  title,
-  subtitle,
   session,
   derivedPossessions,
   sideDist,
   passDist,
   outcomeDist,
 }: {
-  title: string;
-  subtitle: string;
   session: ReturnType<typeof deriveSessionIntelligence>;
   derivedPossessions: Array<{
     id: string | number;
@@ -224,7 +268,7 @@ function ReportView({
           </div>
         </SectionCard>
 
-        <SectionCard title="Machine Read">
+        <SectionCard title="Session Story">
           <div className="space-y-3">
             {session.insights.map((insight, i) => (
               <div
@@ -376,67 +420,88 @@ function CardView({
 }: {
   session: ReturnType<typeof deriveSessionIntelligence>;
 }) {
+  const tags = shareTags(session);
+  const story = socialStory(session);
+
   return (
-    <div className="overflow-hidden rounded-[32px] border border-white/8 bg-black">
-      <div className="bg-[radial-gradient(circle_at_top,rgba(190,242,100,0.16),transparent_30%)] p-6 sm:p-8">
+    <div className="mx-auto w-full max-w-[720px] overflow-hidden rounded-[36px] border border-white/8 bg-black">
+      <div className="bg-[radial-gradient(circle_at_top,rgba(190,242,100,0.16),transparent_32%)] p-6 sm:p-8">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <div className="mb-2 text-xs uppercase tracking-[0.32em] text-white/30">
               Axis
             </div>
-            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-5xl">
               Possession Profile
             </h2>
-            <p className="mt-2 max-w-xl text-white/55">
-              A session-level story generated from possession taps.
+            <p className="mt-3 max-w-xl text-lg leading-8 text-white/62">
+              A clean read on how the session held together.
             </p>
           </div>
 
-          <div className="rounded-full border border-lime-300/20 bg-lime-300 px-4 py-2 text-sm font-medium text-black">
-            {session.total} possessions
+          <div className="rounded-[24px] bg-lime-300 px-5 py-4 text-black">
+            <div className="text-sm font-medium">{session.total}</div>
+            <div className="text-2xl font-semibold leading-none">possessions</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-          {[
-            ["Downhill", `${session.downhillRate}%`],
-            ["Paint", `${session.paintTouchRate}%`],
-            ["Help", `${session.helpRate}%`],
-            ["Pass", `${session.passRate}%`],
-            ["Advantage", `${session.advantageRate}%`],
-          ].map(([label, value]) => (
-            <div
-              key={label}
-              className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4"
-            >
-              <div className="text-xs uppercase tracking-[0.22em] text-white/35">
-                {label}
-              </div>
-              <div className="mt-2 text-3xl font-semibold">{value}</div>
-            </div>
-          ))}
+        <div className="rounded-[28px] border border-white/8 bg-white/[0.04] p-5 sm:p-6">
+          <div className="mb-3 text-xs uppercase tracking-[0.24em] text-white/35">
+            Session Story
+          </div>
+          <p className="text-2xl leading-[1.45] text-white/92 sm:text-[2rem]">
+            {story}
+          </p>
         </div>
 
-        <div className="mt-8 space-y-3">
-          {session.insights.slice(0, 2).map((insight, i) => (
-            <div
-              key={i}
-              className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5 text-lg leading-8 text-white/82"
-            >
-              {insight}
+        <div className="mt-6 grid grid-cols-2 gap-4">
+          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+            <div className="text-xs uppercase tracking-[0.22em] text-white/35">
+              Downhill
             </div>
-          ))}
+            <div className="mt-3 text-5xl font-semibold">{session.downhillRate}%</div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+            <div className="text-xs uppercase tracking-[0.22em] text-white/35">
+              Paint
+            </div>
+            <div className="mt-3 text-5xl font-semibold">{session.paintTouchRate}%</div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+            <div className="text-xs uppercase tracking-[0.22em] text-white/35">
+              Help
+            </div>
+            <div className="mt-3 text-5xl font-semibold">{session.helpRate}%</div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+            <div className="text-xs uppercase tracking-[0.22em] text-white/35">
+              Advantage
+            </div>
+            <div className="mt-3 text-5xl font-semibold">{session.advantageRate}%</div>
+          </div>
         </div>
 
-        <div className="mt-8 flex flex-wrap gap-3">
-          {session.topTags.slice(0, 5).map((item) => (
-            <span
-              key={item.tag}
-              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/82"
-            >
-              {item.tag}
-            </span>
-          ))}
+        <div className="mt-6 rounded-[28px] border border-white/8 bg-white/[0.04] p-5 sm:p-6">
+          <div className="mb-4 text-xs uppercase tracking-[0.24em] text-white/35">
+            Session Tags
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {tags.length ? (
+              tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-base text-white/88"
+                >
+                  {tag}
+                </span>
+              ))
+            ) : (
+              <span className="text-white/45">No tags yet.</span>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -451,7 +516,7 @@ export default function ExportReport({
   const reportRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [view, setView] = useState<ExportView>("report");
+  const [view, setView] = useState<ExportView>("card");
   const [showRaw, setShowRaw] = useState(false);
 
   const completedPossessions = useMemo(
@@ -531,28 +596,26 @@ export default function ExportReport({
       </header>
 
       <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4 text-sm text-white/60">
-        {view === "report"
-          ? "Report view is the full session export."
-          : "Card view is the compact share version."}
+        {view === "card"
+          ? "Card is the clean social version."
+          : "Report is the full session breakdown."}
+      </div>
+
+      <div className={view === "card" ? "block" : "hidden"}>
+        <div ref={cardRef}>
+          <CardView session={session} />
+        </div>
       </div>
 
       <div className={view === "report" ? "block" : "hidden"}>
         <div ref={reportRef}>
           <ReportView
-            title={title}
-            subtitle={subtitle}
             session={session}
             derivedPossessions={derivedPossessions}
             sideDist={sideDist}
             passDist={passDist}
             outcomeDist={outcomeDist}
           />
-        </div>
-      </div>
-
-      <div className={view === "card" ? "block" : "hidden"}>
-        <div ref={cardRef}>
-          <CardView session={session} />
         </div>
       </div>
 
