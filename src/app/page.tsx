@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ExportReport from "@/components/export/ExportReport";
 import {
   deriveSessionIntelligence,
@@ -128,7 +128,8 @@ function formatTime(seconds?: number) {
   if (seconds == null || Number.isNaN(seconds)) return "—";
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
+  const tenths = Math.floor((seconds % 1) * 10);
+  return `${mins}:${secs.toString().padStart(2, "0")}.${tenths}`;
 }
 
 async function captureFrameAtTime(
@@ -404,7 +405,8 @@ function chainToExportPossession(chain: PossessionChain): PossessionRecord {
 
 export default function Page() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mainVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const [activeTab, setActiveTab] = useState<"review" | "export">("review");
   const [videoUrl, setVideoUrl] = useState("");
@@ -492,6 +494,29 @@ export default function Page() {
     return withThumb?.thumbnailUrl;
   }, [chains]);
 
+  const hasPreviewWindow =
+    currentChain.startTimeSec != null &&
+    currentChain.endTimeSec != null &&
+    currentChain.endTimeSec > currentChain.startTimeSec;
+
+  useEffect(() => {
+    const preview = previewVideoRef.current;
+    if (!preview || !hasPreviewWindow) return;
+
+    const start = currentChain.startTimeSec!;
+    const end = currentChain.endTimeSec!;
+
+    const onTimeUpdate = () => {
+      if (preview.currentTime >= end) {
+        preview.pause();
+        preview.currentTime = start;
+      }
+    };
+
+    preview.addEventListener("timeupdate", onTimeUpdate);
+    return () => preview.removeEventListener("timeupdate", onTimeUpdate);
+  }, [currentChain.startTimeSec, currentChain.endTimeSec, hasPreviewWindow]);
+
   function handlePickVideo() {
     fileInputRef.current?.click();
   }
@@ -522,6 +547,27 @@ export default function Page() {
           ...patch,
         },
       };
+    });
+  }
+
+  function adjustTime(which: "start" | "end", delta: number) {
+    const video = mainVideoRef.current;
+    const duration = video?.duration ?? 0;
+    const start = currentChain.startTimeSec ?? 0;
+    const end = currentChain.endTimeSec ?? Math.max(start + 1, 1);
+
+    let nextStart = start;
+    let nextEnd = end;
+
+    if (which === "start") {
+      nextStart = Math.max(0, Math.min(start + delta, Math.max(end - 0.1, 0)));
+    } else {
+      nextEnd = Math.max(start + 0.1, Math.min(end + delta, duration || end + delta));
+    }
+
+    updateChain({
+      startTimeSec: nextStart,
+      endTimeSec: nextEnd,
     });
   }
 
@@ -590,7 +636,7 @@ export default function Page() {
   }
 
   async function grabThumbnail() {
-    const video = videoRef.current;
+    const video = mainVideoRef.current;
     if (!video || !videoUrl) return;
 
     try {
@@ -619,23 +665,32 @@ export default function Page() {
   }
 
   function markStart() {
-    const video = videoRef.current;
+    const video = mainVideoRef.current;
     if (!video) return;
     updateChain({ startTimeSec: video.currentTime });
   }
 
   function markEnd() {
-    const video = videoRef.current;
+    const video = mainVideoRef.current;
     if (!video) return;
     updateChain({ endTimeSec: video.currentTime });
   }
 
-  function jumpToTime(time?: number) {
+  function jumpToTime(time?: number, target: "main" | "preview" = "main") {
     if (time == null) return;
-    const video = videoRef.current;
+    const video = target === "main" ? mainVideoRef.current : previewVideoRef.current;
     if (!video) return;
     video.currentTime = time;
     video.play().catch(() => {});
+  }
+
+  function playPreviewWindow() {
+    if (!hasPreviewWindow) return;
+    const preview = previewVideoRef.current;
+    if (!preview) return;
+
+    preview.currentTime = currentChain.startTimeSec!;
+    preview.play().catch(() => {});
   }
 
   function answerQuestion(value: string) {
@@ -832,7 +887,7 @@ export default function Page() {
                   <div className="relative aspect-[9/12] w-full sm:aspect-video xl:aspect-[16/10]">
                     {videoUrl ? (
                       <video
-                        ref={videoRef}
+                        ref={mainVideoRef}
                         src={videoUrl}
                         controls
                         playsInline
@@ -910,6 +965,77 @@ export default function Page() {
                   </div>
                 </div>
 
+                <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="text-xs uppercase tracking-[0.28em] text-white/35">
+                      Possession clip preview
+                    </div>
+                    {hasPreviewWindow ? (
+                      <button
+                        type="button"
+                        onClick={playPreviewWindow}
+                        className="rounded-full bg-lime-300 px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-black"
+                      >
+                        Play Window
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="overflow-hidden rounded-[20px] border border-white/8 bg-black">
+                    <div className="relative aspect-video w-full">
+                      {videoUrl ? (
+                        <video
+                          ref={previewVideoRef}
+                          src={videoUrl}
+                          controls
+                          playsInline
+                          muted
+                          preload="metadata"
+                          className="h-full w-full object-contain"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-white/35">
+                          Upload a video first
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-[18px] border border-white/8 bg-black/40 p-4">
+                      <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/35">
+                        Window
+                      </div>
+                      <div className="space-y-1 text-sm text-white/82">
+                        <div>Start · {formatTime(currentChain.startTimeSec)}</div>
+                        <div>End · {formatTime(currentChain.endTimeSec)}</div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[18px] border border-white/8 bg-black/40 p-4">
+                      <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/35">
+                        Trim nudges
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <UtilityChip label="Start -0.5" onClick={() => adjustTime("start", -0.5)} />
+                        <UtilityChip label="Start +0.5" onClick={() => adjustTime("start", 0.5)} />
+                        <UtilityChip label="End -0.5" onClick={() => adjustTime("end", -0.5)} />
+                        <UtilityChip label="End +0.5" onClick={() => adjustTime("end", 0.5)} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {currentChain.thumbnailUrl ? (
+                    <div className="mt-4 overflow-hidden rounded-[18px] border border-white/8 bg-black/40">
+                      <img
+                        src={currentChain.thumbnailUrl}
+                        alt="Possession thumbnail"
+                        className="h-44 w-full object-cover"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="space-y-5">
                   <div className="flex items-center justify-between">
                     <div>
@@ -974,21 +1100,6 @@ export default function Page() {
                     </div>
 
                     <div className="space-y-3">
-                      <div className="rounded-[18px] border border-white/8 bg-black/40 p-4 text-sm text-white/78">
-                        <div>Start · {formatTime(currentChain.startTimeSec)}</div>
-                        <div>End · {formatTime(currentChain.endTimeSec)}</div>
-                      </div>
-
-                      {currentChain.thumbnailUrl ? (
-                        <div className="overflow-hidden rounded-[18px] border border-white/8 bg-black/40">
-                          <img
-                            src={currentChain.thumbnailUrl}
-                            alt="Possession thumbnail"
-                            className="h-44 w-full object-cover"
-                          />
-                        </div>
-                      ) : null}
-
                       {currentChain.links.map((link, index) => (
                         <div
                           key={index}
@@ -1022,12 +1133,11 @@ export default function Page() {
                 </div>
 
                 <h3 className="text-3xl font-semibold tracking-tight">
-                  Mark the possession window
+                  Preview the possession window
                 </h3>
 
                 <p className="mt-4 max-w-sm text-base leading-7 text-white/68">
-                  Start and end now belong to the possession. Thumbnail pulls a
-                  real frame from that window.
+                  Start and end now define a real preview window. Trim nudges help tighten it before export.
                 </p>
 
                 <div className="mt-8 space-y-3">
