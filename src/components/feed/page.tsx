@@ -392,7 +392,9 @@ function linkSentence(link: LinkRecord) {
 }
 
 function chainSummary(chain: PossessionChain) {
-  const parts = chain.links.map((link) => linkSentence(link)).filter(Boolean);
+  const parts = chain.links
+    .map((link) => linkSentence(link))
+    .filter(Boolean);
 
   if (chain.outcome) {
     parts.push(titleCase(chain.outcome.replaceAll("_", " ")));
@@ -531,7 +533,7 @@ export default function Page() {
     currentChain.endTimeSec > currentChain.startTimeSec;
 
   const feedPossessions: FeedPossession[] = useMemo(() => {
-    return reviewedChains.map((chain) => {
+    return reviewedChains.map((chain, index) => {
       const exportRecord = chainToExportPossession(chain);
       const intelligence = derivePossessionIntelligence(exportRecord);
 
@@ -554,7 +556,9 @@ export default function Page() {
       {
         id: "current-session",
         label: videoName === "No video selected" ? "Current Session" : videoName,
-        subtitle: sessionIntel.total ? `${sessionIntel.total} reviewed` : "In progress",
+        subtitle: sessionIntel.total
+          ? `${sessionIntel.total} reviewed`
+          : "In progress",
         possessionCount: Math.max(reviewedChains.length, taggedCount),
         thumbnailUrl: bestThumbnailUrl,
       },
@@ -937,7 +941,7 @@ export default function Page() {
     );
   }
 
-    return (
+  return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto w-full max-w-[1440px] px-4 pb-28 pt-6 sm:px-6 lg:px-10 lg:pb-10 lg:pt-8">
         <header className="mb-6 flex flex-col gap-5 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
