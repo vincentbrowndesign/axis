@@ -15,11 +15,55 @@ import type {
   TimelineEvent,
   VideoSession,
 } from "@/lib/review-types";
-import { buildSavedPossession, clamp, createId } from "@/lib/review-utils";
+import {
+  buildSavedPossession,
+  clamp,
+  createId,
+  getEventLabel,
+} from "@/lib/review-utils";
+
+type GuidedStep =
+  | "startAction"
+  | "side"
+  | "paint"
+  | "help"
+  | "decision"
+  | "outcome"
+  | "done";
 
 type Props = {
   onSavePossession?: (possession: SavedPossession) => void;
 };
+
+function deriveGuidedStep(events: TimelineEvent[], outcome: OutcomeType): GuidedStep {
+  const types = events.map((event) => event.type);
+
+  if (outcome) return "done";
+  if (!types.includes("drive") && !types.includes("pass") && !types.includes("shot")) {
+    return "startAction";
+  }
+  if (!types.includes("left") && !types.includes("middle") && !types.includes("right")) {
+    return "side";
+  }
+  if (!types.includes("paint") && !types.includes("no_paint")) {
+    return "paint";
+  }
+  if (!types.includes("help") && !types.includes("no_help")) {
+    return "help";
+  }
+  if (
+    !types.includes("finish") &&
+    !types.includes("reset") &&
+    types.filter((type) => type === "pass").length < 2
+  ) {
+    return "decision";
+  }
+  return "outcome";
+}
+
+function labelsForEvents(events: TimelineEvent[]) {
+  return events.map((event) => getEventLabel(event.type));
+}
 
 export default function AxisReviewEditor({ onSavePossession }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -48,15 +92,22 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
     };
   }, [session.url]);
 
+  const orderedEvents = useMemo(() => {
+    return [...draft.events].sort((a, b) => a.timeSec - b.timeSec);
+  }, [draft.events]);
+
+  const guidedStep = useMemo(
+    () => deriveGuidedStep(orderedEvents, draft.outcome),
+    [orderedEvents, draft.outcome]
+  );
+
+  const activeLabels = useMemo(() => labelsForEvents(orderedEvents), [orderedEvents]);
+
   const canSave =
     draft.startTimeSec != null &&
     draft.endTimeSec != null &&
     draft.endTimeSec > draft.startTimeSec &&
     draft.outcome != null;
-
-  const orderedEvents = useMemo(() => {
-    return [...draft.events].sort((a, b) => a.timeSec - b.timeSec);
-  }, [draft.events]);
 
   function openPicker() {
     fileInputRef.current?.click();
@@ -94,7 +145,7 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
   }
 
   function handleVideoReady(durationSec: number) {
-    setSession((prev) => ({
+    setSession((prev: VideoSession) => ({
       ...prev,
       durationSec,
       isReady: true,
@@ -114,28 +165,28 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
       timeSec: currentTimeSec,
     };
 
-    setDraft((prev) => ({
+    setDraft((prev: PossessionDraft) => ({
       ...prev,
       events: [...prev.events, nextEvent],
     }));
   }
 
   function markStart() {
-    setDraft((prev) => ({
+    setDraft((prev: PossessionDraft) => ({
       ...prev,
       startTimeSec: currentTimeSec,
     }));
   }
 
   function markEnd() {
-    setDraft((prev) => ({
+    setDraft((prev: PossessionDraft) => ({
       ...prev,
       endTimeSec: currentTimeSec,
     }));
   }
 
   function undo() {
-    setDraft((prev) => {
+    setDraft((prev: PossessionDraft) => {
       if (prev.outcome) {
         return { ...prev, outcome: null };
       }
@@ -160,7 +211,7 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
   }
 
   function setOutcome(outcome: Exclude<OutcomeType, null>) {
-    setDraft((prev) => ({
+    setDraft((prev: PossessionDraft) => ({
       ...prev,
       outcome,
     }));
@@ -171,11 +222,16 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
       return;
     }
 
+    const boundedEvents = orderedEvents.filter(
+      (event) =>
+        event.timeSec >= draft.startTimeSec! && event.timeSec <= draft.endTimeSec!
+    );
+
     const saved = buildSavedPossession({
       id: draft.id,
       startTimeSec: draft.startTimeSec,
       endTimeSec: draft.endTimeSec,
-      events: orderedEvents,
+      events: boundedEvents,
       outcome: draft.outcome,
     });
 
@@ -192,7 +248,7 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-4 py-5 sm:px-6">
+      <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4 px-4 py-5 sm:px-5">
         <input
           ref={fileInputRef}
           type="file"
@@ -212,18 +268,22 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
           <button
             type="button"
             onClick={openPicker}
-            className="rounded-full bg-lime-300 px-4 py-3 text-sm font-medium text-black"
+            className="h-11 rounded-full bg-lime-300 px-5 text-sm font-medium text-black"
           >
             {session.url ? "Change video" : "Upload video"}
           </button>
         </div>
 
-        <ReviewPlayer
-          videoUrl={session.url}
-          currentTimeSec={currentTimeSec}
-          onReady={handleVideoReady}
-          onTimeChange={setCurrentTimeSec}
-        />
+        <div className="overflow-hidden rounded-[28px] border border-white/8 bg-black">
+          <div className="mx-auto w-full max-w-[360px]">
+            <ReviewPlayer
+              videoUrl={session.url}
+              currentTimeSec={currentTimeSec}
+              onReady={handleVideoReady}
+              onTimeChange={setCurrentTimeSec}
+            />
+          </div>
+        </div>
 
         <ReviewTimeline
           durationSec={session.durationSec}
@@ -235,6 +295,8 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
         />
 
         <EventToolbar
+          guidedStep={guidedStep}
+          activeLabels={activeLabels}
           onAddEvent={addEvent}
           onMarkStart={markStart}
           onMarkEnd={markEnd}
@@ -244,7 +306,7 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
         <OutcomeBar
           value={draft.outcome}
           onChange={setOutcome}
-          visible={draft.endTimeSec != null}
+          visible={guidedStep === "outcome"}
         />
 
         <PossessionSummary

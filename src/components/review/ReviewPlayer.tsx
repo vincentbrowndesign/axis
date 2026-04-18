@@ -48,8 +48,8 @@ export default function ReviewPlayer({
   }, [currentTimeSec]);
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-white/8 bg-black">
-      <div className="relative aspect-[9/16] w-full bg-black">
+    <div className="overflow-hidden rounded-[24px] border border-white/8 bg-black">
+      <div className="relative aspect-[9/16] w-full max-h-[58vh] bg-black">
         {videoUrl ? (
           <video
             ref={videoRef}
