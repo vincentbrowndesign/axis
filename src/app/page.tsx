@@ -142,17 +142,22 @@ async function captureFrameAtTime(
   timeSec: number
 ): Promise<string> {
   const originalTime = video.currentTime;
-  const safeTime = Math.max(0, Math.min(timeSec, Math.max(video.duration - 0.1, 0)));
+  const safeTime = Math.max(
+    0,
+    Math.min(timeSec, Math.max(video.duration - 0.1, 0))
+  );
 
   await new Promise<void>((resolve, reject) => {
     const onSeeked = () => {
       cleanup();
       resolve();
     };
+
     const onError = () => {
       cleanup();
       reject(new Error("Failed to seek video for thumbnail extraction."));
     };
+
     const cleanup = () => {
       video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("error", onError);
@@ -579,6 +584,14 @@ export default function Page() {
     return () => preview.removeEventListener("timeupdate", onTimeUpdate);
   }, [currentChain.startTimeSec, currentChain.endTimeSec, hasPreviewWindow]);
 
+  useEffect(() => {
+    return () => {
+      if (videoUrl) {
+        URL.revokeObjectURL(videoUrl);
+      }
+    };
+  }, [videoUrl]);
+
   function handlePickVideo() {
     fileInputRef.current?.click();
   }
@@ -587,12 +600,19 @@ export default function Page() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
+    if (videoUrl) {
+      URL.revokeObjectURL(videoUrl);
+    }
 
     const objectUrl = URL.createObjectURL(file);
+
     setVideoUrl(objectUrl);
     setVideoName(file.name);
+    setCurrentStepIndex(0);
+    setChains({});
     setActiveTab("review");
+
+    event.target.value = "";
   }
 
   function updateChain(patch: Partial<PossessionChain>) {
@@ -717,7 +737,6 @@ export default function Page() {
             : current;
 
       const thumbnailUrl = await captureFrameAtTime(video, frameTime);
-
       updateChain({ thumbnailUrl });
     } catch (error) {
       console.error(error);
@@ -741,14 +760,17 @@ export default function Page() {
 
   function jumpToTime(time?: number, target: "main" | "preview" = "main") {
     if (time == null) return;
+
     const video = target === "main" ? mainVideoRef.current : previewVideoRef.current;
     if (!video) return;
+
     video.currentTime = time;
     video.play().catch(() => {});
   }
 
   function playPreviewWindow() {
     if (!hasPreviewWindow) return;
+
     const preview = previewVideoRef.current;
     if (!preview) return;
 
@@ -889,55 +911,65 @@ export default function Page() {
 
   if (activeTab === "feed") {
     return (
-      <AxisFeed
-        possessions={feedPossessions}
-        sessions={feedSessions}
-        activeSession={
-          videoUrl
-            ? {
-                id: "current-session",
-                label: videoName,
-                progressLabel: `${Math.max(taggedCount, 1)}/${REVIEW_STEPS.length} reviewed`,
-              }
-            : undefined
-        }
-        onUpload={handlePickVideo}
-        onOpenResume={() => setActiveTab("review")}
-        onOpenSession={() => setActiveTab("review")}
-        onOpenPossession={(id) => {
-          const index = REVIEW_STEPS.findIndex((step) => step.id === id);
-          if (index >= 0) {
-            setCurrentStepIndex(index);
-            setActiveTab("review");
+      <main className="min-h-screen bg-black text-white">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/*,.mov,.mp4,.m4v,.webm"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+
+        <AxisFeed
+          possessions={feedPossessions}
+          sessions={feedSessions}
+          activeSession={
+            videoUrl
+              ? {
+                  id: "current-session",
+                  label: videoName,
+                  progressLabel: `${Math.max(taggedCount, 1)}/${REVIEW_STEPS.length} reviewed`,
+                }
+              : undefined
           }
-        }}
-        onSavePossession={() => {}}
-        onSharePossession={(id) => {
-          const index = REVIEW_STEPS.findIndex((step) => step.id === id);
-          if (index >= 0) {
-            setCurrentStepIndex(index);
-            setActiveTab("export");
-          }
-        }}
-        onExportPossession={(id) => {
-          const index = REVIEW_STEPS.findIndex((step) => step.id === id);
-          if (index >= 0) {
-            setCurrentStepIndex(index);
-            setActiveTab("export");
-          }
-        }}
-        onReviewPossession={(id) => {
-          const index = REVIEW_STEPS.findIndex((step) => step.id === id);
-          if (index >= 0) {
-            setCurrentStepIndex(index);
-            setActiveTab("review");
-          }
-        }}
-      />
+          onUpload={handlePickVideo}
+          onOpenResume={() => setActiveTab("review")}
+          onOpenSession={() => setActiveTab("review")}
+          onOpenPossession={(id) => {
+            const index = REVIEW_STEPS.findIndex((step) => step.id === id);
+            if (index >= 0) {
+              setCurrentStepIndex(index);
+              setActiveTab("review");
+            }
+          }}
+          onSavePossession={() => {}}
+          onSharePossession={(id) => {
+            const index = REVIEW_STEPS.findIndex((step) => step.id === id);
+            if (index >= 0) {
+              setCurrentStepIndex(index);
+              setActiveTab("export");
+            }
+          }}
+          onExportPossession={(id) => {
+            const index = REVIEW_STEPS.findIndex((step) => step.id === id);
+            if (index >= 0) {
+              setCurrentStepIndex(index);
+              setActiveTab("export");
+            }
+          }}
+          onReviewPossession={(id) => {
+            const index = REVIEW_STEPS.findIndex((step) => step.id === id);
+            if (index >= 0) {
+              setCurrentStepIndex(index);
+              setActiveTab("review");
+            }
+          }}
+        />
+      </main>
     );
   }
 
-    return (
+  return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto w-full max-w-[1440px] px-4 pb-28 pt-6 sm:px-6 lg:px-10 lg:pb-10 lg:pt-8">
         <header className="mb-6 flex flex-col gap-5 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
@@ -1052,9 +1084,7 @@ export default function Page() {
                         <QuickChip
                           key={option.value}
                           active={activeLink.paintTouch === option.value}
-                          label={
-                            option.label === "Paint Touch" ? "Paint" : "No Paint"
-                          }
+                          label={option.label === "Paint Touch" ? "Paint" : "No Paint"}
                           onClick={() => quickSetPaintTouch(option.value)}
                         />
                       ))}
@@ -1135,10 +1165,22 @@ export default function Page() {
                         Trim nudges
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <UtilityChip label="Start -0.5" onClick={() => adjustTime("start", -0.5)} />
-                        <UtilityChip label="Start +0.5" onClick={() => adjustTime("start", 0.5)} />
-                        <UtilityChip label="End -0.5" onClick={() => adjustTime("end", -0.5)} />
-                        <UtilityChip label="End +0.5" onClick={() => adjustTime("end", 0.5)} />
+                        <UtilityChip
+                          label="Start -0.5"
+                          onClick={() => adjustTime("start", -0.5)}
+                        />
+                        <UtilityChip
+                          label="Start +0.5"
+                          onClick={() => adjustTime("start", 0.5)}
+                        />
+                        <UtilityChip
+                          label="End -0.5"
+                          onClick={() => adjustTime("end", -0.5)}
+                        />
+                        <UtilityChip
+                          label="End +0.5"
+                          onClick={() => adjustTime("end", 0.5)}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1255,7 +1297,8 @@ export default function Page() {
                 </h3>
 
                 <p className="mt-4 max-w-sm text-base leading-7 text-white/68">
-                  Start and end now define a real preview window. Trim nudges help tighten it before export.
+                  Start and end now define a real preview window. Trim nudges help
+                  tighten it before export.
                 </p>
 
                 <div className="mt-8 space-y-3">
@@ -1293,7 +1336,7 @@ export default function Page() {
         )}
       </div>
 
-      {(activeTab === "review" || activeTab === "export") ? (
+      {activeTab === "review" || activeTab === "export" ? (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/8 bg-black/85 backdrop-blur md:hidden">
           <div
             className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-4 py-3"

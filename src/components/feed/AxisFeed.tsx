@@ -233,6 +233,8 @@ function PossessionMedia({
           loop
           preload="metadata"
           className="h-full w-full object-cover"
+          onPause={() => setIsPlaying(false)}
+          onPlay={() => setIsPlaying(true)}
         />
         <button
           type="button"
@@ -346,7 +348,7 @@ function BottomNav() {
   return (
     <nav className="sticky bottom-0 z-30 border-t border-white/8 bg-black/85 backdrop-blur">
       <div className="mx-auto flex max-w-[980px] items-center justify-around px-4 py-3 text-sm text-white/65">
-        <button type="button" className="rounded-full bg-white text-black px-4 py-2">
+        <button type="button" className="rounded-full bg-white px-4 py-2 text-black">
           Feed
         </button>
         <button type="button" className="px-4 py-2">
