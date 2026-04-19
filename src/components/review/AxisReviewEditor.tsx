@@ -7,6 +7,7 @@ import PossessionSummary from "./PossessionSummary";
 import ReviewHeader from "./ReviewHeader";
 import ReviewPlayer from "./ReviewPlayer";
 import ReviewTimeline from "./ReviewTimeline";
+
 import type {
   EventType,
   OutcomeType,
@@ -15,6 +16,7 @@ import type {
   TimelineEvent,
   VideoSession,
 } from "@/lib/review-types";
+
 import {
   buildSavedPossession,
   clamp,
@@ -36,46 +38,35 @@ type Props = {
   onSavePossession?: (possession: SavedPossession) => void;
 };
 
-function deriveGuidedStep(events: TimelineEvent[], outcome: OutcomeType): GuidedStep {
-  const types = events.map((event) => event.type);
+function deriveGuidedStep(
+  events: TimelineEvent[],
+  outcome: OutcomeType
+): GuidedStep {
+  const types = events.map((e) => e.type);
 
   if (outcome) return "done";
 
-  if (!types.includes("drive") && !types.includes("pass") && !types.includes("shot")) {
+  if (!types.some((t) => ["drive", "pass", "shot"].includes(t)))
     return "startAction";
-  }
 
-  if (!types.includes("left") && !types.includes("middle") && !types.includes("right")) {
+  if (!types.some((t) => ["left", "middle", "right"].includes(t)))
     return "side";
-  }
 
-  if (!types.includes("paint") && !types.includes("no_paint")) {
+  if (!types.some((t) => ["paint", "no_paint"].includes(t)))
     return "paint";
-  }
 
-  if (!types.includes("help") && !types.includes("no_help")) {
+  if (!types.some((t) => ["help", "no_help"].includes(t)))
     return "help";
-  }
 
-  if (
-    !types.includes("finish") &&
-    !types.includes("reset") &&
-    types.filter((type) => type === "pass").length < 2
-  ) {
+  if (!types.some((t) => ["finish", "reset"].includes(t)))
     return "decision";
-  }
 
   return "outcome";
-}
-
-function labelsForEvents(events: TimelineEvent[]) {
-  return events.map((event) => getEventLabel(event.type));
 }
 
 export default function AxisReviewEditor({ onSavePossession }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const replayIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [session, setSession] = useState<VideoSession>({
     file: null,
@@ -89,58 +80,45 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [draft, setDraft] = useState<PossessionDraft>({
-    id: createId("possession"),
+    id: createId("pos"),
     startTimeSec: null,
     endTimeSec: null,
     events: [],
     outcome: null,
   });
 
-  const [savedPossessions, setSavedPossessions] = useState<SavedPossession[]>([]);
+  const [saved, setSaved] = useState<SavedPossession[]>([]);
 
+  // cleanup
   useEffect(() => {
     return () => {
       if (session.url) URL.revokeObjectURL(session.url);
-      if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
     };
   }, [session.url]);
 
-  const orderedEvents = useMemo(() => {
-    return [...draft.events].sort((a, b) => a.timeSec - b.timeSec);
-  }, [draft.events]);
+  const orderedEvents = useMemo(
+    () => [...draft.events].sort((a, b) => a.timeSec - b.timeSec),
+    [draft.events]
+  );
 
   const guidedStep = useMemo(
     () => deriveGuidedStep(orderedEvents, draft.outcome),
     [orderedEvents, draft.outcome]
   );
 
-  const activeLabels = useMemo(() => labelsForEvents(orderedEvents), [orderedEvents]);
+  const activeLabels = orderedEvents.map((e) => getEventLabel(e.type));
 
   const canSave =
     draft.startTimeSec != null &&
     draft.endTimeSec != null &&
-    draft.endTimeSec > draft.startTimeSec &&
-    draft.outcome != null;
+    draft.outcome != null &&
+    draft.endTimeSec > draft.startTimeSec;
 
-  const hasDraftActivity =
-    draft.startTimeSec != null ||
-    draft.endTimeSec != null ||
-    draft.events.length > 0 ||
-    draft.outcome != null;
-
-  function openPicker() {
-    fileInputRef.current?.click();
-  }
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (session.url) URL.revokeObjectURL(session.url);
-    if (replayIntervalRef.current) {
-      clearInterval(replayIntervalRef.current);
-      replayIntervalRef.current = null;
-    }
 
     const url = URL.createObjectURL(file);
 
@@ -153,105 +131,76 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
     });
 
     setCurrentTimeSec(0);
-    setIsPlaying(false);
-
     setDraft({
-      id: createId("possession"),
+      id: createId("pos"),
       startTimeSec: null,
       endTimeSec: null,
       events: [],
       outcome: null,
     });
-
-    setSavedPossessions([]);
-    e.target.value = "";
   }
 
-  function handleVideoReady(durationSec: number) {
-    setSession((prev: VideoSession) => ({
-      ...prev,
-      durationSec,
-      isReady: true,
-    }));
-  }
-
-  function handleSeek(timeSec: number) {
-    setCurrentTimeSec(clamp(timeSec, 0, session.durationSec || 0));
-  }
-
-  function handleTogglePlay() {
-    if (!session.url) return;
-    setIsPlaying((prev) => !prev);
+  function onReady(duration: number) {
+    setSession((prev) => ({ ...prev, durationSec: duration, isReady: true }));
   }
 
   function addEvent(type: EventType) {
-    if (!session.isReady) return;
-
-    const nextEvent: TimelineEvent = {
-      id: createId("event"),
+    const next: TimelineEvent = {
+      id: createId("evt"),
       type,
       timeSec: currentTimeSec,
     };
 
-    setDraft((prev: PossessionDraft) => ({
+    setDraft((prev) => ({
       ...prev,
-      events: [...prev.events, nextEvent],
+      events: [...prev.events, next],
     }));
   }
 
   function markStart() {
-    setDraft((prev: PossessionDraft) => ({
-      ...prev,
-      startTimeSec: currentTimeSec,
-    }));
+    setDraft((prev) => ({ ...prev, startTimeSec: currentTimeSec }));
   }
 
   function markEnd() {
-    setDraft((prev: PossessionDraft) => ({
-      ...prev,
-      endTimeSec: currentTimeSec,
-    }));
+    setDraft((prev) => ({ ...prev, endTimeSec: currentTimeSec }));
   }
 
   function undo() {
-    setDraft((prev: PossessionDraft) => {
+    setDraft((prev) => {
       if (prev.outcome) return { ...prev, outcome: null };
-      if (prev.events.length) return { ...prev, events: prev.events.slice(0, -1) };
+      if (prev.events.length)
+        return { ...prev, events: prev.events.slice(0, -1) };
       if (prev.endTimeSec != null) return { ...prev, endTimeSec: null };
       if (prev.startTimeSec != null) return { ...prev, startTimeSec: null };
       return prev;
     });
   }
 
-  function setOutcome(outcome: Exclude<OutcomeType, null>) {
-    setDraft((prev: PossessionDraft) => ({
-      ...prev,
-      outcome,
-    }));
-  }
+  function save() {
+    const { startTimeSec, endTimeSec, outcome } = draft;
 
-  function savePossession() {
-    if (!canSave || draft.startTimeSec == null || draft.endTimeSec == null || !draft.outcome) {
-      return;
-    }
+    // ✅ FIXED NULL GUARD
+    if (startTimeSec == null || endTimeSec == null || !outcome) return;
 
     const boundedEvents = orderedEvents.filter(
-      (event) => event.timeSec >= draft.startTimeSec && event.timeSec <= draft.endTimeSec
+      (event) =>
+        event.timeSec >= startTimeSec &&
+        event.timeSec <= endTimeSec
     );
 
-    const saved = buildSavedPossession({
+    const possession = buildSavedPossession({
       id: createId("saved"),
-      startTimeSec: draft.startTimeSec,
-      endTimeSec: draft.endTimeSec,
+      startTimeSec,
+      endTimeSec,
       events: boundedEvents,
-      outcome: draft.outcome,
+      outcome,
     });
 
-    setSavedPossessions((prev: SavedPossession[]) => [saved, ...prev]);
-    onSavePossession?.(saved);
+    setSaved((prev) => [possession, ...prev]);
+    onSavePossession?.(possession);
 
     setDraft({
-      id: createId("possession"),
+      id: createId("pos"),
       startTimeSec: null,
       endTimeSec: null,
       events: [],
@@ -259,99 +208,56 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
     });
   }
 
-  function replayPossession(possession: SavedPossession) {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (replayIntervalRef.current) {
-      clearInterval(replayIntervalRef.current);
-      replayIntervalRef.current = null;
-    }
-
-    setCurrentTimeSec(possession.startTimeSec);
-    setIsPlaying(true);
-    video.currentTime = possession.startTimeSec;
-
-    const stopAt = possession.endTimeSec;
-
-    replayIntervalRef.current = setInterval(() => {
-      const currentVideo = videoRef.current;
-      if (!currentVideo) return;
-
-      if (currentVideo.currentTime >= stopAt) {
-        currentVideo.pause();
-        currentVideo.currentTime = possession.startTimeSec;
-        setCurrentTimeSec(possession.startTimeSec);
-        setIsPlaying(false);
-
-        if (replayIntervalRef.current) {
-          clearInterval(replayIntervalRef.current);
-          replayIntervalRef.current = null;
-        }
-      }
-    }, 50);
-  }
-
   return (
     <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto flex w-full max-w-[560px] flex-col gap-3 px-4 py-5 sm:px-5">
+      <div className="mx-auto max-w-[520px] space-y-4 p-4">
+
         <input
           ref={fileInputRef}
           type="file"
-          accept="video/*,.mov,.mp4,.m4v,.webm"
+          accept="video/*"
           className="hidden"
-          onChange={handleFileChange}
+          onChange={handleFile}
         />
 
         <ReviewHeader
           title={session.name}
           onBack={() => {}}
-          onSave={savePossession}
+          onSave={save}
           canSave={canSave}
         />
 
-        <div className="flex justify-start">
-          <button
-            type="button"
-            onClick={openPicker}
-            className="h-9 rounded-full border border-white/10 px-4 text-xs text-white/70"
-          >
-            {session.url ? "Change video" : "Upload video"}
-          </button>
-        </div>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="text-sm text-white/70"
+        >
+          {session.url ? "Change video" : "Upload video"}
+        </button>
 
-        <div className="flex flex-col items-center gap-3">
-          <div className="overflow-hidden rounded-[28px] border border-white/8 bg-black">
-            <div className="mx-auto w-full max-w-[260px]">
-              <ReviewPlayer
-                ref={videoRef}
-                videoUrl={session.url}
-                currentTimeSec={currentTimeSec}
-                onReady={handleVideoReady}
-                onTimeChange={setCurrentTimeSec}
-                isPlaying={isPlaying}
-                onPlayStateChange={setIsPlaying}
-              />
-            </div>
-          </div>
+        <ReviewPlayer
+          ref={videoRef}
+          videoUrl={session.url}
+          currentTimeSec={currentTimeSec}
+          onReady={onReady}
+          onTimeChange={setCurrentTimeSec}
+          isPlaying={isPlaying}
+          onPlayStateChange={setIsPlaying}
+        />
 
-          <div className="w-full">
-            <ReviewTimeline
-              durationSec={session.durationSec}
-              currentTimeSec={currentTimeSec}
-              startTimeSec={draft.startTimeSec}
-              endTimeSec={draft.endTimeSec}
-              events={orderedEvents}
-              onSeek={handleSeek}
-            />
-          </div>
-        </div>
+        <ReviewTimeline
+          durationSec={session.durationSec}
+          currentTimeSec={currentTimeSec}
+          startTimeSec={draft.startTimeSec}
+          endTimeSec={draft.endTimeSec}
+          events={orderedEvents}
+          onSeek={(t) => setCurrentTimeSec(clamp(t, 0, session.durationSec))}
+        />
 
         <EventToolbar
           guidedStep={guidedStep}
           activeLabels={activeLabels}
           isPlaying={isPlaying}
-          onTogglePlay={handleTogglePlay}
+          onTogglePlay={() => setIsPlaying((p) => !p)}
           onAddEvent={addEvent}
           onMarkStart={markStart}
           onMarkEnd={markEnd}
@@ -360,52 +266,16 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
 
         <OutcomeBar
           value={draft.outcome}
-          onChange={setOutcome}
+          onChange={(o) => setDraft((prev) => ({ ...prev, outcome: o }))}
           visible={guidedStep === "outcome"}
         />
 
-        {hasDraftActivity && (
-          <PossessionSummary
-            startTimeSec={draft.startTimeSec}
-            endTimeSec={draft.endTimeSec}
-            events={orderedEvents}
-            outcome={draft.outcome}
-          />
-        )}
-
-        {savedPossessions.length > 0 && (
-          <div className="space-y-3 pt-4">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-white/42">
-              Saved Possessions
-            </div>
-
-            <div className="space-y-3">
-              {savedPossessions.map((possession) => (
-                <button
-                  key={possession.id}
-                  type="button"
-                  onClick={() => replayPossession(possession)}
-                  className="w-full rounded-[22px] border border-white/8 bg-white/[0.03] p-4 text-left transition active:scale-[0.99]"
-                >
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <div className="text-xs text-white/42">
-                      {formatTime(possession.startTimeSec)} →{" "}
-                      {formatTime(possession.endTimeSec)}
-                    </div>
-
-                    <div className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] tracking-[0.12em] text-lime-300">
-                      {possession.state.toUpperCase()}
-                    </div>
-                  </div>
-
-                  <div className="text-sm leading-6 text-white">
-                    {possession.story}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <PossessionSummary
+          startTimeSec={draft.startTimeSec}
+          endTimeSec={draft.endTimeSec}
+          events={orderedEvents}
+          outcome={draft.outcome}
+        />
       </div>
     </main>
   );
