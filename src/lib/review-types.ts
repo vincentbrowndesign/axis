@@ -26,11 +26,16 @@ export type TimelineEvent = {
   timeSec: number;
 };
 
+export type LinkDraft = {
+  id: string;
+  events: TimelineEvent[];
+};
+
 export type PossessionDraft = {
   id: string;
   startTimeSec: number | null;
   endTimeSec: number | null;
-  events: TimelineEvent[];
+  links: LinkDraft[];
   outcome: OutcomeType;
 };
 
@@ -38,7 +43,7 @@ export type SavedPossession = {
   id: string;
   startTimeSec: number;
   endTimeSec: number;
-  events: TimelineEvent[];
+  links: LinkDraft[];
   outcome: Exclude<OutcomeType, null>;
   story: string;
   state: "advantage" | "neutral" | "breakdown";

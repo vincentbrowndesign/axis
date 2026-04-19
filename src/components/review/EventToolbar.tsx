@@ -19,8 +19,8 @@ type Option = {
 const STEP_OPTIONS: Record<GuidedStep, Option[]> = {
   startAction: [
     { label: "Drive", value: "drive" },
-    { label: "Pass", value: "pass" },
     { label: "Shot", value: "shot" },
+    { label: "Pass", value: "pass" },
   ],
   side: [
     { label: "Left", value: "left" },
