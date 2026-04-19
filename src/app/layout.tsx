@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Axis Review",
-  description: "Axis video review",
+  description: "Axis BDT tagging system",
 };
 
 export default function RootLayout({
