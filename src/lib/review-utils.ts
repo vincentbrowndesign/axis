@@ -1,5 +1,6 @@
 import type {
   EventType,
+  LinkDraft,
   OutcomeType,
   SavedPossession,
   TimelineEvent,
@@ -24,7 +25,11 @@ export function sortEvents(events: TimelineEvent[]) {
   return [...events].sort((a, b) => a.timeSec - b.timeSec);
 }
 
-export function getEventLabel(type: EventType) {
+export function flattenLinkEvents(links: LinkDraft[]) {
+  return links.flatMap((link) => sortEvents(link.events));
+}
+
+export function getEventLabel(type: EventType | Exclude<OutcomeType, null>) {
   switch (type) {
     case "drive":
       return "Drive";
@@ -61,26 +66,43 @@ export function getEventLabel(type: EventType) {
   }
 }
 
-export function getEventGroup(type: EventType) {
-  if (type === "drive" || type === "pass" || type === "shot") return "action";
-  if (type === "left" || type === "middle" || type === "right") return "side";
-  if (type === "paint" || type === "no_paint") return "paint";
-  if (type === "help" || type === "no_help") return "help";
-  if (type === "finish" || type === "reset") return "decision";
-  return "outcome";
+function buildLinkPhrase(link: LinkDraft) {
+  const labels = sortEvents(link.events).map((event) => {
+    if (event.type === "no_paint") return "no paint";
+    if (event.type === "no_help") return "no help";
+    if (event.type === "help") return "help showed";
+    return getEventLabel(event.type).toLowerCase();
+  });
+
+  return labels.join(" • ");
 }
 
-export function getStateFromEvents(
-  events: TimelineEvent[],
+export function buildStory(links: LinkDraft[], outcome: OutcomeType) {
+  const nonEmptyLinks = links.filter((link) => link.events.length > 0);
+
+  if (!nonEmptyLinks.length) return "No possession story yet.";
+
+  const linkText = nonEmptyLinks
+    .map((link, index) => `Link ${index + 1}: ${buildLinkPhrase(link)}`)
+    .join("  →  ");
+
+  const outcomeText = outcome ? `  •  ${getEventLabel(outcome)}` : "";
+
+  return `${linkText}${outcomeText}`;
+}
+
+export function getStateFromLinks(
+  links: LinkDraft[],
   outcome: OutcomeType
 ): "advantage" | "neutral" | "breakdown" {
-  const types = events.map((event) => event.type);
+  const types = flattenLinkEvents(links).map((event) => event.type);
 
   const createdPressure =
     types.includes("drive") ||
     types.includes("paint") ||
     types.includes("help") ||
-    types.includes("finish");
+    types.includes("finish") ||
+    types.includes("shot");
 
   if (outcome === "turnover") return "breakdown";
   if (outcome === "foul") return "advantage";
@@ -90,56 +112,27 @@ export function getStateFromEvents(
   return "neutral";
 }
 
-export function buildStory(events: TimelineEvent[], outcome: OutcomeType) {
-  const types = events.map((event) => event.type);
-
-  const parts: string[] = [];
-
-  if (types.includes("drive")) parts.push("Drive");
-  else if (types.includes("pass")) parts.push("Pass");
-  else if (types.includes("shot")) parts.push("Shot");
-
-  if (types.includes("left")) parts.push("left");
-  if (types.includes("middle")) parts.push("middle");
-  if (types.includes("right")) parts.push("right");
-
-  if (types.includes("paint")) parts.push("paint touch");
-  if (types.includes("no_paint")) parts.push("no paint");
-
-  if (types.includes("help")) parts.push("help showed");
-  if (types.includes("no_help")) parts.push("no help");
-
-  if (types.includes("finish")) parts.push("finish");
-  if (types.includes("reset")) parts.push("reset");
-
-  if (outcome === "make") parts.push("make");
-  if (outcome === "miss") parts.push("miss");
-  if (outcome === "turnover") parts.push("turnover");
-  if (outcome === "foul") parts.push("foul");
-
-  if (!parts.length) return "No possession story yet.";
-
-  return parts.join(" · ");
-}
-
 export function buildSavedPossession(args: {
   id: string;
   startTimeSec: number;
   endTimeSec: number;
-  events: TimelineEvent[];
+  links: LinkDraft[];
   outcome: Exclude<OutcomeType, null>;
 }): SavedPossession {
-  const orderedEvents = sortEvents(args.events);
-  const story = buildStory(orderedEvents, args.outcome);
-  const state = getStateFromEvents(orderedEvents, args.outcome);
+  const links = args.links
+    .map((link) => ({
+      ...link,
+      events: sortEvents(link.events),
+    }))
+    .filter((link) => link.events.length > 0);
 
   return {
     id: args.id,
     startTimeSec: args.startTimeSec,
     endTimeSec: args.endTimeSec,
-    events: orderedEvents,
+    links,
     outcome: args.outcome,
-    story,
-    state,
+    story: buildStory(links, args.outcome),
+    state: getStateFromLinks(links, args.outcome),
   };
 }
