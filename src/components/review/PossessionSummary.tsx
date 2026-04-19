@@ -1,7 +1,7 @@
 "use client";
 
 import type { OutcomeType, TimelineEvent } from "@/lib/review-types";
-import { buildStory, getEventLabel, sortEvents } from "@/lib/review-utils";
+import { buildStory, formatTime, getEventLabel, sortEvents } from "@/lib/review-utils";
 
 type Props = {
   startTimeSec: number | null;
@@ -19,32 +19,68 @@ export default function PossessionSummary({
   const ordered = sortEvents(events);
 
   return (
-    <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-      <div className="mb-3 text-sm text-white/55">Possession</div>
-
-      <div className="space-y-2 text-sm text-white/80">
-        <div>Start: {startTimeSec == null ? "—" : startTimeSec.toFixed(2)}</div>
-        <div>End: {endTimeSec == null ? "—" : endTimeSec.toFixed(2)}</div>
-        <div>Outcome: {outcome ?? "—"}</div>
+    <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
+      <div className="mb-3 text-[11px] uppercase tracking-[0.18em] text-white/42">
+        Possession
       </div>
 
-      <div className="mt-4 space-y-2">
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-[16px] border border-white/8 bg-black/30 px-3 py-3">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-white/36">
+            Start
+          </div>
+          <div className="mt-1 text-sm text-white/82">
+            {startTimeSec == null ? "—" : formatTime(startTimeSec)}
+          </div>
+        </div>
+
+        <div className="rounded-[16px] border border-white/8 bg-black/30 px-3 py-3">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-white/36">
+            End
+          </div>
+          <div className="mt-1 text-sm text-white/82">
+            {endTimeSec == null ? "—" : formatTime(endTimeSec)}
+          </div>
+        </div>
+
+        <div className="rounded-[16px] border border-white/8 bg-black/30 px-3 py-3">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-white/36">
+            Outcome
+          </div>
+          <div className="mt-1 text-sm text-white/82">
+            {outcome == null ? "—" : getEventLabel(outcome)}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-2 text-[10px] uppercase tracking-[0.14em] text-white/36">
+          Event Path
+        </div>
+
         {ordered.length ? (
-          ordered.map((event) => (
-            <div
-              key={event.id}
-              className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/85"
-            >
-              {getEventLabel(event.type)} · {event.timeSec.toFixed(2)}
-            </div>
-          ))
+          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {ordered.map((event) => (
+              <div
+                key={event.id}
+                className="h-8 shrink-0 whitespace-nowrap rounded-full border border-white/8 bg-black/30 px-3 text-[11px] leading-8 tracking-[0.04em] text-white/78"
+              >
+                {getEventLabel(event.type)}
+              </div>
+            ))}
+          </div>
         ) : (
-          <div className="text-sm text-white/45">No events yet.</div>
+          <div className="text-sm text-white/42">No events yet.</div>
         )}
       </div>
 
-      <div className="mt-4 text-base font-medium text-white">
-        {buildStory(ordered, outcome)}
+      <div className="mt-4 rounded-[16px] border border-white/8 bg-black/30 px-3 py-3">
+        <div className="mb-2 text-[10px] uppercase tracking-[0.14em] text-white/36">
+          Story
+        </div>
+        <div className="text-sm leading-6 text-white/88">
+          {buildStory(ordered, outcome)}
+        </div>
       </div>
     </div>
   );

@@ -19,6 +19,7 @@ import {
   buildSavedPossession,
   clamp,
   createId,
+  formatTime,
   getEventLabel,
 } from "@/lib/review-utils";
 
@@ -39,18 +40,23 @@ function deriveGuidedStep(events: TimelineEvent[], outcome: OutcomeType): Guided
   const types = events.map((event) => event.type);
 
   if (outcome) return "done";
+
   if (!types.includes("drive") && !types.includes("pass") && !types.includes("shot")) {
     return "startAction";
   }
+
   if (!types.includes("left") && !types.includes("middle") && !types.includes("right")) {
     return "side";
   }
+
   if (!types.includes("paint") && !types.includes("no_paint")) {
     return "paint";
   }
+
   if (!types.includes("help") && !types.includes("no_help")) {
     return "help";
   }
+
   if (
     !types.includes("finish") &&
     !types.includes("reset") &&
@@ -58,6 +64,7 @@ function deriveGuidedStep(events: TimelineEvent[], outcome: OutcomeType): Guided
   ) {
     return "decision";
   }
+
   return "outcome";
 }
 
@@ -67,6 +74,8 @@ function labelsForEvents(events: TimelineEvent[]) {
 
 export default function AxisReviewEditor({ onSavePossession }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const replayIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [session, setSession] = useState<VideoSession>({
     file: null,
@@ -77,6 +86,7 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
   });
 
   const [currentTimeSec, setCurrentTimeSec] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const [draft, setDraft] = useState<PossessionDraft>({
     id: createId("possession"),
@@ -86,9 +96,12 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
     outcome: null,
   });
 
+  const [savedPossessions, setSavedPossessions] = useState<SavedPossession[]>([]);
+
   useEffect(() => {
     return () => {
       if (session.url) URL.revokeObjectURL(session.url);
+      if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
     };
   }, [session.url]);
 
@@ -109,6 +122,12 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
     draft.endTimeSec > draft.startTimeSec &&
     draft.outcome != null;
 
+  const hasDraftActivity =
+    draft.startTimeSec != null ||
+    draft.endTimeSec != null ||
+    draft.events.length > 0 ||
+    draft.outcome != null;
+
   function openPicker() {
     fileInputRef.current?.click();
   }
@@ -117,8 +136,10 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (session.url) {
-      URL.revokeObjectURL(session.url);
+    if (session.url) URL.revokeObjectURL(session.url);
+    if (replayIntervalRef.current) {
+      clearInterval(replayIntervalRef.current);
+      replayIntervalRef.current = null;
     }
 
     const url = URL.createObjectURL(file);
@@ -132,6 +153,7 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
     });
 
     setCurrentTimeSec(0);
+    setIsPlaying(false);
 
     setDraft({
       id: createId("possession"),
@@ -141,6 +163,7 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
       outcome: null,
     });
 
+    setSavedPossessions([]);
     e.target.value = "";
   }
 
@@ -154,6 +177,11 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
 
   function handleSeek(timeSec: number) {
     setCurrentTimeSec(clamp(timeSec, 0, session.durationSec || 0));
+  }
+
+  function handleTogglePlay() {
+    if (!session.url) return;
+    setIsPlaying((prev) => !prev);
   }
 
   function addEvent(type: EventType) {
@@ -187,25 +215,10 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
 
   function undo() {
     setDraft((prev: PossessionDraft) => {
-      if (prev.outcome) {
-        return { ...prev, outcome: null };
-      }
-
-      if (prev.events.length) {
-        return {
-          ...prev,
-          events: prev.events.slice(0, -1),
-        };
-      }
-
-      if (prev.endTimeSec != null) {
-        return { ...prev, endTimeSec: null };
-      }
-
-      if (prev.startTimeSec != null) {
-        return { ...prev, startTimeSec: null };
-      }
-
+      if (prev.outcome) return { ...prev, outcome: null };
+      if (prev.events.length) return { ...prev, events: prev.events.slice(0, -1) };
+      if (prev.endTimeSec != null) return { ...prev, endTimeSec: null };
+      if (prev.startTimeSec != null) return { ...prev, startTimeSec: null };
       return prev;
     });
   }
@@ -223,18 +236,18 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
     }
 
     const boundedEvents = orderedEvents.filter(
-      (event) =>
-        event.timeSec >= draft.startTimeSec! && event.timeSec <= draft.endTimeSec!
+      (event) => event.timeSec >= draft.startTimeSec && event.timeSec <= draft.endTimeSec
     );
 
     const saved = buildSavedPossession({
-      id: draft.id,
+      id: createId("saved"),
       startTimeSec: draft.startTimeSec,
       endTimeSec: draft.endTimeSec,
       events: boundedEvents,
       outcome: draft.outcome,
     });
 
+    setSavedPossessions((prev: SavedPossession[]) => [saved, ...prev]);
     onSavePossession?.(saved);
 
     setDraft({
@@ -246,9 +259,42 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
     });
   }
 
+  function replayPossession(possession: SavedPossession) {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (replayIntervalRef.current) {
+      clearInterval(replayIntervalRef.current);
+      replayIntervalRef.current = null;
+    }
+
+    setCurrentTimeSec(possession.startTimeSec);
+    setIsPlaying(true);
+    video.currentTime = possession.startTimeSec;
+
+    const stopAt = possession.endTimeSec;
+
+    replayIntervalRef.current = setInterval(() => {
+      const currentVideo = videoRef.current;
+      if (!currentVideo) return;
+
+      if (currentVideo.currentTime >= stopAt) {
+        currentVideo.pause();
+        currentVideo.currentTime = possession.startTimeSec;
+        setCurrentTimeSec(possession.startTimeSec);
+        setIsPlaying(false);
+
+        if (replayIntervalRef.current) {
+          clearInterval(replayIntervalRef.current);
+          replayIntervalRef.current = null;
+        }
+      }
+    }, 50);
+  }
+
   return (
     <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4 px-4 py-5 sm:px-5">
+      <div className="mx-auto flex w-full max-w-[560px] flex-col gap-3 px-4 py-5 sm:px-5">
         <input
           ref={fileInputRef}
           type="file"
@@ -268,35 +314,44 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
           <button
             type="button"
             onClick={openPicker}
-            className="h-11 rounded-full bg-lime-300 px-5 text-sm font-medium text-black"
+            className="h-9 rounded-full border border-white/10 px-4 text-xs text-white/70"
           >
             {session.url ? "Change video" : "Upload video"}
           </button>
         </div>
 
-        <div className="overflow-hidden rounded-[28px] border border-white/8 bg-black">
-          <div className="mx-auto w-full max-w-[360px]">
-            <ReviewPlayer
-              videoUrl={session.url}
+        <div className="flex flex-col items-center gap-3">
+          <div className="overflow-hidden rounded-[28px] border border-white/8 bg-black">
+            <div className="mx-auto w-full max-w-[260px]">
+              <ReviewPlayer
+                ref={videoRef}
+                videoUrl={session.url}
+                currentTimeSec={currentTimeSec}
+                onReady={handleVideoReady}
+                onTimeChange={setCurrentTimeSec}
+                isPlaying={isPlaying}
+                onPlayStateChange={setIsPlaying}
+              />
+            </div>
+          </div>
+
+          <div className="w-full">
+            <ReviewTimeline
+              durationSec={session.durationSec}
               currentTimeSec={currentTimeSec}
-              onReady={handleVideoReady}
-              onTimeChange={setCurrentTimeSec}
+              startTimeSec={draft.startTimeSec}
+              endTimeSec={draft.endTimeSec}
+              events={orderedEvents}
+              onSeek={handleSeek}
             />
           </div>
         </div>
 
-        <ReviewTimeline
-          durationSec={session.durationSec}
-          currentTimeSec={currentTimeSec}
-          startTimeSec={draft.startTimeSec}
-          endTimeSec={draft.endTimeSec}
-          events={orderedEvents}
-          onSeek={handleSeek}
-        />
-
         <EventToolbar
           guidedStep={guidedStep}
           activeLabels={activeLabels}
+          isPlaying={isPlaying}
+          onTogglePlay={handleTogglePlay}
           onAddEvent={addEvent}
           onMarkStart={markStart}
           onMarkEnd={markEnd}
@@ -309,12 +364,48 @@ export default function AxisReviewEditor({ onSavePossession }: Props) {
           visible={guidedStep === "outcome"}
         />
 
-        <PossessionSummary
-          startTimeSec={draft.startTimeSec}
-          endTimeSec={draft.endTimeSec}
-          events={orderedEvents}
-          outcome={draft.outcome}
-        />
+        {hasDraftActivity && (
+          <PossessionSummary
+            startTimeSec={draft.startTimeSec}
+            endTimeSec={draft.endTimeSec}
+            events={orderedEvents}
+            outcome={draft.outcome}
+          />
+        )}
+
+        {savedPossessions.length > 0 && (
+          <div className="space-y-3 pt-4">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-white/42">
+              Saved Possessions
+            </div>
+
+            <div className="space-y-3">
+              {savedPossessions.map((possession) => (
+                <button
+                  key={possession.id}
+                  type="button"
+                  onClick={() => replayPossession(possession)}
+                  className="w-full rounded-[22px] border border-white/8 bg-white/[0.03] p-4 text-left transition active:scale-[0.99]"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/42">
+                      {formatTime(possession.startTimeSec)} →{" "}
+                      {formatTime(possession.endTimeSec)}
+                    </div>
+
+                    <div className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] tracking-[0.12em] text-lime-300">
+                      {possession.state.toUpperCase()}
+                    </div>
+                  </div>
+
+                  <div className="text-sm leading-6 text-white">
+                    {possession.story}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

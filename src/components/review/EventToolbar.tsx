@@ -52,6 +52,8 @@ const STEP_OPTIONS: Record<GuidedStep, Option[]> = {
 type Props = {
   guidedStep: GuidedStep;
   activeLabels: string[];
+  isPlaying: boolean;
+  onTogglePlay: () => void;
   onAddEvent: (type: EventType) => void;
   onMarkStart: () => void;
   onMarkEnd: () => void;
@@ -92,8 +94,8 @@ function ToolButton({
       onClick={onClick}
       className={
         tone === "lime"
-          ? "h-10 shrink-0 whitespace-nowrap rounded-full bg-lime-300 px-4 text-[13px] font-medium text-black"
-          : "h-10 shrink-0 whitespace-nowrap rounded-full border border-white/10 bg-white/[0.03] px-4 text-[13px] text-white/92"
+          ? "h-8 shrink-0 rounded-lg bg-lime-300 px-3 text-xs font-medium text-black active:scale-[0.97] active:bg-lime-300/90"
+          : "h-8 shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-xs text-white/78 active:scale-[0.97] active:bg-white/[0.08]"
       }
     >
       {label}
@@ -101,24 +103,18 @@ function ToolButton({
   );
 }
 
-function EventChip({
+function EventTool({
   label,
-  active,
   onClick,
 }: {
   label: string;
-  active?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={
-        active
-          ? "h-9 shrink-0 whitespace-nowrap rounded-full bg-lime-300 px-3 text-xs font-medium tracking-[0.04em] text-black"
-          : "h-9 shrink-0 whitespace-nowrap rounded-full border border-white/10 bg-white/[0.03] px-3 text-xs tracking-[0.04em] text-white/88"
-      }
+      className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs text-white/82 active:scale-[0.97] active:bg-lime-300/20"
     >
       {label}
     </button>
@@ -128,6 +124,8 @@ function EventChip({
 export default function EventToolbar({
   guidedStep,
   activeLabels,
+  isPlaying,
+  onTogglePlay,
   onAddEvent,
   onMarkStart,
   onMarkEnd,
@@ -136,19 +134,20 @@ export default function EventToolbar({
   const options = STEP_OPTIONS[guidedStep];
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <ToolButton label={isPlaying ? "Pause" : "Play"} onClick={onTogglePlay} />
         <ToolButton label="Start" onClick={onMarkStart} tone="lime" />
         <ToolButton label="End" onClick={onMarkEnd} tone="lime" />
         <ToolButton label="Undo" onClick={onUndo} />
       </div>
 
-      {activeLabels.length ? (
+      {activeLabels.length > 0 ? (
         <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {activeLabels.map((label) => (
+          {activeLabels.map((label, index) => (
             <div
-              key={label}
-              className="h-8 shrink-0 whitespace-nowrap rounded-full border border-white/10 bg-white/[0.05] px-3 text-[11px] leading-8 tracking-[0.08em] text-white/58"
+              key={`${label}-${index}`}
+              className="h-7 shrink-0 rounded-lg border border-white/8 bg-white/[0.04] px-3 text-[11px] leading-7 text-white/56"
             >
               {label}
             </div>
@@ -164,7 +163,7 @@ export default function EventToolbar({
 
           <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {options.map((option) => (
-              <EventChip
+              <EventTool
                 key={`${guidedStep}-${option.value}`}
                 label={option.label}
                 onClick={() => onAddEvent(option.value)}
