@@ -1,140 +1,110 @@
-// src/app/page.tsx
+import Link from "next/link";
 
-"use client";
-
-import { useRouter } from "next/navigation";
-
-export default function HomePage() {
-  const router = useRouter();
-
+export default function Page() {
   return (
-    <main className="min-h-screen px-10 py-12 flex flex-col justify-between">
-      
-      {/* HEADER */}
-      <div className="flex justify-between items-center text-sm text-neutral-400">
-        <div>
-          <div className="text-xs tracking-widest text-neutral-500">AXIS</div>
-          <div className="text-neutral-300">Review System</div>
-        </div>
-
-        <button
-          onClick={() => router.push("/review")}
-          className="border border-white/20 px-4 py-2 rounded-lg hover:bg-white/10 transition"
-        >
-          Open Review
-        </button>
-      </div>
-
-      {/* HERO */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center mt-16">
-        
-        {/* LEFT SIDE */}
-        <div>
-          <div className="text-xs tracking-widest axis-accent mb-3">AXIS</div>
-
-          <h1 className="text-4xl md:text-5xl font-semibold leading-tight">
-            Review possessions.
-            <br />
-            Tag decisions.
-            <br />
-            Build the dataset.
-          </h1>
-
-          <p className="text-neutral-400 mt-6 max-w-md">
-            Axis turns live basketball footage into structured review. Upload a session,
-            mark the possession, track the decision chain, and turn real actions into usable signal.
-          </p>
-
-          {/* CTA */}
-          <div className="flex gap-4 mt-8">
-            <button
-              onClick={() => router.push("/review")}
-              className="bg-lime-400 text-black px-5 py-3 rounded-lg font-medium hover:opacity-90"
-            >
-              Start Review
-            </button>
-
-            <button
-              onClick={() => router.push("/review")}
-              className="border border-white/20 px-5 py-3 rounded-lg hover:bg-white/10"
-            >
-              Upload Game
-            </button>
+    <main className="min-h-screen bg-[#0a1220] text-white">
+      <div className="mx-auto max-w-7xl px-6 py-8 md:px-10 md:py-10">
+        <header className="flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.28em] text-white/35">Axis</p>
+            <p className="mt-1 text-lg text-white/85">Review System</p>
           </div>
 
-          {/* FEATURES */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-10">
-            
-            <div className="card p-4 rounded-xl">
-              <div className="text-xs text-neutral-400 mb-2">CAPTURE</div>
-              <div className="text-sm">
-                Upload game or practice video into one review workspace.
+          <Link
+            href="/review"
+            className="rounded-2xl border border-white/15 px-5 py-3 text-sm text-white/85 transition hover:border-white/30"
+          >
+            Open Review
+          </Link>
+        </header>
+
+        <section className="grid gap-10 py-12 md:py-16 lg:grid-cols-[1fr_460px] lg:items-center">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-[0.28em] text-lime-400">Axis</p>
+
+            <h1 className="mt-4 max-w-4xl text-5xl font-semibold tracking-tight md:text-7xl">
+              Turn decisions
+              <br />
+              into signal.
+            </h1>
+
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-white/58">
+              Upload a session. Review possessions. Tag the decision chain. Build cards, branches,
+              and usable signal from real play.
+            </p>
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                href="/review"
+                className="rounded-2xl bg-lime-400 px-6 py-4 text-base font-medium text-black transition hover:opacity-90"
+              >
+                Start Review
+              </Link>
+
+              <Link
+                href="/review"
+                className="rounded-2xl border border-white/15 px-6 py-4 text-base text-white/90 transition hover:border-white/30"
+              >
+                Upload Game
+              </Link>
+            </div>
+
+            <div className="mt-10 grid gap-4 md:grid-cols-3">
+              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+                <p className="text-xs uppercase tracking-[0.22em] text-white/35">Capture</p>
+                <p className="mt-3 text-lg text-white/90">
+                  Upload game or practice video into one review workspace.
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+                <p className="text-xs uppercase tracking-[0.22em] text-white/35">Tag</p>
+                <p className="mt-3 text-lg text-white/90">
+                  Mark drive, pass, shot, turnover, help, lane, and result.
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+                <p className="text-xs uppercase tracking-[0.22em] text-white/35">Build</p>
+                <p className="mt-3 text-lg text-white/90">
+                  Turn possessions into linked logic, cards, and session memory.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-white/35">Axis Review</p>
+                <p className="mt-1 text-2xl text-white/95">Possession Instrument</p>
+              </div>
+
+              <div className="rounded-xl bg-lime-400 px-3 py-2 text-sm font-medium text-black">
+                Live Logic
               </div>
             </div>
 
-            <div className="card p-4 rounded-xl">
-              <div className="text-xs text-neutral-400 mb-2">TAG</div>
-              <div className="text-sm">
-                Mark drive, pass, shot, turnover, help, lane, and result.
+            <div className="mt-5 rounded-2xl border border-white/8 bg-black/50 p-4">
+              <div className="aspect-video rounded-xl bg-gradient-to-br from-[#111827] to-black" />
+
+              <div className="mt-4 h-2 rounded-full bg-white/10">
+                <div className="h-2 w-[42%] rounded-full bg-white/80" />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {["Shot", "Pass", "Drive", "Downhill", "Middle", "No Help"].map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-sm text-white/85"
+                  >
+                    {item}
+                  </div>
+                ))}
               </div>
             </div>
-
-            <div className="card p-4 rounded-xl">
-              <div className="text-xs text-neutral-400 mb-2">BUILD</div>
-              <div className="text-sm">
-                Turn possessions into linked logic, clips, and session memory.
-              </div>
-            </div>
-
           </div>
-        </div>
-
-        {/* RIGHT SIDE (PREVIEW CARD) */}
-        <div className="card p-6 rounded-2xl">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <div className="text-xs text-neutral-400">AXIS REVIEW</div>
-              <div className="text-sm">Possession Instrument</div>
-            </div>
-
-            <div className="bg-lime-400 text-black text-xs px-2 py-1 rounded">
-              Live Logic
-            </div>
-          </div>
-
-          {/* VIDEO PLACEHOLDER */}
-          <div className="h-40 bg-black/40 rounded-lg mb-6" />
-
-          {/* TIMELINE */}
-          <div className="mb-4">
-            <div className="flex justify-between text-xs text-neutral-500 mb-1">
-              <span>0:42</span>
-              <span>4:18</span>
-            </div>
-
-            <div className="h-2 bg-white/10 rounded-full relative">
-              <div className="absolute left-[30%] top-[-4px] w-2 h-4 bg-purple-400 rounded"></div>
-              <div className="absolute left-[55%] top-[-4px] w-2 h-4 bg-green-400 rounded"></div>
-              <div className="absolute left-[70%] top-[-4px] w-2 h-4 bg-yellow-400 rounded"></div>
-            </div>
-          </div>
-
-          {/* TAG BUTTONS */}
-          <div className="flex flex-wrap gap-2">
-            <span className="bg-blue-500 px-3 py-1 rounded text-sm">Shot</span>
-            <span className="bg-purple-500 px-3 py-1 rounded text-sm">Pass</span>
-            <span className="bg-green-500 px-3 py-1 rounded text-sm">Drive</span>
-            <span className="bg-yellow-500 px-3 py-1 rounded text-sm">Downhill</span>
-            <span className="bg-neutral-700 px-3 py-1 rounded text-sm">Middle</span>
-            <span className="bg-neutral-700 px-3 py-1 rounded text-sm">No Help</span>
-          </div>
-        </div>
-
-      </div>
-
-      {/* FOOTER */}
-      <div className="text-xs text-neutral-500 mt-12">
-        Axis ©
+        </section>
       </div>
     </main>
   );
