@@ -2,241 +2,448 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type NodeId =
-  | "start"
+/* =============================
+   TYPES
+============================= */
+
+type StepId =
+  | "selectPlayer"
+  | "trigger"
   | "action"
-  | "lane"
-  | "help"
-  | "afterHelp"
-  | "finishType"
-  | "outcome"
-  | "branchStart";
+  | "location"
+  | "defense"
+  | "decision"
+  | "receiver"
+  | "outcome";
 
-type EventKind = "chain" | "outcome" | "branch" | "deadball";
+type EventKind = "chain" | "branch" | "outcome" | "terminal";
 
-type TimelineEvent = {
+type Player = {
+  id: string;
+  name: string;
+};
+
+type PossessionEvent = {
   id: string;
   timeSec: number;
+  step: StepId;
   label: string;
-  chainId: string;
-  depth: number;
+  playerId?: string;
+  nextPlayerId?: string;
   kind: EventKind;
 };
 
-type ChainSummary = {
+type PossessionNode = {
   id: string;
-  parentChainId?: string;
-  parentEventId?: string;
-  depth: number;
-  labels: string[];
+  label: string;
+  playerId?: string;
+  timeSec: number;
+  kind: EventKind;
+};
+
+type PossessionEdge = {
+  id: string;
+  from: string;
+  to: string;
+};
+
+type SavedPossession = {
+  id: string;
+  events: PossessionEvent[];
+  nodes: PossessionNode[];
+  edges: PossessionEdge[];
+  summary: string;
   startSec: number;
-  endSec?: number;
-  closed: boolean;
+  endSec: number;
 };
 
-type Suggestion = {
-  title: string;
+type Option = {
+  label: string;
   value: string;
-  tone?: "primary" | "normal";
+  tone?: "primary" | "normal" | "danger";
 };
 
-const START_OPTIONS: Suggestion[] = [
-  { title: "Catch", value: "Catch", tone: "primary" },
-  { title: "OREB", value: "OREB" },
-  { title: "Inbound", value: "Inbound" },
-  { title: "Push", value: "Push" },
+/* =============================
+   DATA
+============================= */
+
+const PLAYERS: Player[] = [
+  { id: "p1", name: "Player A" },
+  { id: "p2", name: "Player B" },
+  { id: "p3", name: "Player C" },
+  { id: "p4", name: "Player D" },
+  { id: "p5", name: "Player E" },
 ];
 
-const ACTION_OPTIONS: Suggestion[] = [
-  { title: "Downhill", value: "Downhill", tone: "primary" },
-  { title: "Shot", value: "Shot" },
-  { title: "Pass", value: "Pass" },
-  { title: "Turnover", value: "Turnover" },
-];
+/* =============================
+   UTILS
+============================= */
 
-const LANE_OPTIONS: Suggestion[] = [
-  { title: "Left", value: "Left" },
-  { title: "Middle", value: "Middle", tone: "primary" },
-  { title: "Right", value: "Right" },
-];
-
-const HELP_OPTIONS: Suggestion[] = [
-  { title: "No Help", value: "No Help", tone: "primary" },
-  { title: "Help", value: "Help" },
-];
-
-const AFTER_HELP_OPTIONS: Suggestion[] = [
-  { title: "Pass", value: "Pass", tone: "primary" },
-  { title: "Finish", value: "Finish" },
-  { title: "Reset", value: "Reset" },
-];
-
-const FINISH_OPTIONS: Suggestion[] = [
-  { title: "Lay", value: "Lay", tone: "primary" },
-  { title: "Floater", value: "Floater" },
-  { title: "Pull-Up", value: "Pull-Up" },
-  { title: "Kickout", value: "Kickout" },
-];
-
-const OUTCOME_OPTIONS: Suggestion[] = [
-  { title: "Make", value: "Make", tone: "primary" },
-  { title: "Miss", value: "Miss" },
-  { title: "Foul", value: "Foul" },
-];
-
-const BRANCH_START_OPTIONS: Suggestion[] = [
-  { title: "Catch", value: "Catch", tone: "primary" },
-  { title: "Shot", value: "Shot" },
-  { title: "Downhill", value: "Downhill" },
-  { title: "Pass", value: "Pass" },
-  { title: "Turnover", value: "Turnover" },
-];
-
-function uid() {
+function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function formatTime(sec: number) {
+function formatTime(sec: number): string {
   if (!Number.isFinite(sec)) return "0:00";
-  const minutes = Math.floor(sec / 60);
-  const seconds = Math.floor(sec % 60);
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function buttonTone(tone?: "primary" | "normal") {
+/* =============================
+   STYLES
+============================= */
+
+function buttonTone(tone?: Option["tone"]): string {
   if (tone === "primary") {
-    return "border-lime-400/45 bg-lime-400/[0.14] text-lime-100 hover:border-lime-300/70 hover:bg-lime-400/[0.2]";
+    return "border-lime-400/40 bg-lime-400/[0.12] text-lime-100 hover:bg-lime-400/[0.18]";
   }
-
-  return "border-white/10 bg-black text-white/88 hover:border-white/25 hover:bg-white/[0.04]";
+  if (tone === "danger") {
+    return "border-red-400/40 bg-red-400/[0.08] text-red-100 hover:bg-red-400/[0.14]";
+  }
+  return "border-white/10 bg-black text-white/90 hover:bg-white/[0.04]";
 }
 
-function eventTone(kind: EventKind) {
-  if (kind === "branch") {
-    return "border-lime-400/30 bg-lime-400/[0.08] text-lime-100";
-  }
-  if (kind === "outcome") {
-    return "border-white/20 bg-white/[0.07] text-white";
-  }
-  if (kind === "deadball") {
-    return "border-white/10 bg-white/[0.04] text-white/70";
-  }
-  return "border-white/10 bg-white/[0.04] text-white/85";
+function badgeTone(kind: EventKind): string {
+  if (kind === "branch") return "border-lime-400/30 bg-lime-400/[0.08] text-lime-100";
+  if (kind === "outcome") return "border-white/20 bg-white/[0.08] text-white";
+  if (kind === "terminal") return "border-red-400/30 bg-red-400/[0.08] text-red-100";
+  return "border-white/10 bg-white/[0.05] text-white/80";
 }
 
-function deriveRead(node: NodeId, labels: string[]) {
-  if (!labels.length) return "What started it?";
-  if (node === "action") return "What happened next?";
-  if (node === "lane") return "Which lane opened?";
-  if (node === "help") return "Where’s the help?";
-  if (node === "afterHelp") return "What did the pressure force?";
-  if (node === "finishType") return "How did he finish?";
-  if (node === "outcome") return "Did it work?";
-  if (node === "branchStart") return "New branch. What happened off the pass?";
-  return "Keep the chain honest.";
+type MapNode = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  kind: EventKind;
+  timeSec: number;
+};
+
+type MapEdge = {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+};
+
+type LayoutResult = {
+  nodes: MapNode[];
+  edges: MapEdge[];
+  width: number;
+  height: number;
+};
+
+/* =============================
+   HELPERS
+============================= */
+
+function buildSummary(events: PossessionEvent[], players: Player[]): string {
+  const byId = new Map<string, string>(players.map((p: Player) => [p.id, p.name]));
+  const actor = events.find((e: PossessionEvent) => e.step === "selectPlayer")?.playerId;
+  const actorName = actor ? byId.get(actor) ?? "Unknown" : "Unknown";
+  const trigger = events.find((e: PossessionEvent) => e.step === "trigger")?.label;
+  const action = events.find((e: PossessionEvent) => e.step === "action")?.label;
+  const location = events.find((e: PossessionEvent) => e.step === "location")?.label;
+  const defense = events.find((e: PossessionEvent) => e.step === "defense")?.label;
+  const decision = events.find((e: PossessionEvent) => e.step === "decision")?.label;
+  const receiverEvent = events.find((e: PossessionEvent) => e.step === "receiver");
+  const outcome = [...events]
+    .reverse()
+    .find((e: PossessionEvent) => e.step === "outcome")?.label;
+
+  if (decision === "Pass" && receiverEvent?.nextPlayerId) {
+    const receiverName = byId.get(receiverEvent.nextPlayerId) ?? "Receiver";
+    return `${actorName} ${trigger ? `started on ${trigger.toLowerCase()}, ` : ""}${
+      action ? action.toLowerCase() : "acted"
+    }${location ? ` ${location.toLowerCase()}` : ""}${
+      defense ? `, drew ${defense.toLowerCase()}` : ""
+    }, passed to ${receiverName}${
+      outcome ? `, possession ended in ${outcome.toLowerCase()}` : ""
+    }.`;
+  }
+
+  return `${actorName} ${trigger ? `started on ${trigger.toLowerCase()}, ` : ""}${
+    action ? action.toLowerCase() : "acted"
+  }${location ? ` ${location.toLowerCase()}` : ""}${
+    defense ? `, saw ${defense.toLowerCase()}` : ""
+  }${decision ? `, chose ${decision.toLowerCase()}` : ""}${
+    outcome ? `, ended in ${outcome.toLowerCase()}` : ""
+  }.`;
 }
 
-function summarizeChain(labels: string[]) {
-  const downhill = labels.includes("Downhill");
-  const help = labels.includes("Help");
-  const noHelp = labels.includes("No Help");
-  const pass = labels.includes("Pass");
-  const kickout = labels.includes("Kickout");
-  const make = labels.includes("Make");
-  const miss = labels.includes("Miss");
-  const foul = labels.includes("Foul");
-  const turnover = labels.includes("Turnover");
+function countSessionSignal(possessions: SavedPossession[]): {
+  possessions: number;
+  downhill: number;
+  shots: number;
+  help: number;
+  noHelp: number;
+  passes: number;
+  finishes: number;
+  makes: number;
+  misses: number;
+  fouls: number;
+  turnovers: number;
+} {
+  const flat: PossessionEvent[] = possessions.flatMap(
+    (possession: SavedPossession) => possession.events
+  );
 
-  if (turnover) return "Ended in turnover.";
-  if (downhill && help && pass) return "Drive created help and forced a pass.";
-  if (downhill && noHelp && make) return "Clean downhill finish.";
-  if (downhill && noHelp && miss) return "Got downhill and missed the finish.";
-  if (kickout) return "Paint pressure led to kickout.";
-  if (pass && make) return "Pass chain ended in make.";
-  if (pass && miss) return "Pass chain ended in miss.";
-  if (foul) return "Play drew a foul.";
-  if (make) return "Possession ended in make.";
-  if (miss) return "Possession ended in miss.";
-  return "Open chain.";
-}
-
-function countLabels(chains: ChainSummary[]) {
-  const flat = chains.flatMap((chain) => chain.labels);
-
-  const count = (label: string) => flat.filter((item) => item === label).length;
+  const count = (step: StepId | null, label: string): number =>
+    flat.filter(
+      (event: PossessionEvent) =>
+        (step ? event.step === step : true) && event.label === label
+    ).length;
 
   return {
-    downhill: count("Downhill"),
-    help: count("Help"),
-    noHelp: count("No Help"),
-    pass: count("Pass"),
-    kickout: count("Kickout"),
-    make: count("Make"),
-    miss: count("Miss"),
-    turnover: count("Turnover"),
+    possessions: possessions.length,
+    downhill: count("action", "Downhill"),
+    shots: count("action", "Shot"),
+    help: count("defense", "Help"),
+    noHelp: count("defense", "No Help"),
+    passes: flat.filter((event: PossessionEvent) => event.label === "Pass").length,
+    finishes: count("decision", "Finish"),
+    makes: count("outcome", "Make"),
+    misses: count("outcome", "Miss"),
+    fouls: count("outcome", "Foul"),
+    turnovers: flat.filter((event: PossessionEvent) => event.label === "Turnover").length,
   };
+}
+
+function stepBackFromEvent(event: PossessionEvent): StepId {
+  if (event.step === "selectPlayer") return "trigger";
+  if (event.step === "trigger") return "action";
+  if (event.step === "action") {
+    if (event.label === "Downhill") return "location";
+    if (event.label === "Shot") return "outcome";
+    if (event.label === "Pass") return "receiver";
+    return "action";
+  }
+  if (event.step === "location") return "defense";
+  if (event.step === "defense") return "decision";
+  if (event.step === "decision") {
+    if (event.label === "Pass") return "receiver";
+    if (event.label === "Finish") return "outcome";
+    return "decision";
+  }
+  if (event.step === "receiver") return "action";
+  if (event.step === "outcome") return "outcome";
+  return "selectPlayer";
+}
+
+/* =============================
+   GRAPH ENGINE
+============================= */
+
+function layoutGraph(possession: SavedPossession): LayoutResult {
+  const children = new Map<string, string[]>();
+
+  possession.edges.forEach((edge: PossessionEdge) => {
+    const list = children.get(edge.from) ?? [];
+    list.push(edge.to);
+    children.set(edge.from, list);
+  });
+
+  const incoming = new Set<string>(
+    possession.edges.map((edge: PossessionEdge) => edge.to)
+  );
+
+  const root: PossessionNode | undefined =
+    possession.nodes.find((node: PossessionNode) => !incoming.has(node.id)) ??
+    possession.nodes[0];
+
+  const positions = new Map<string, { x: number; y: number }>();
+  let row = 0;
+
+  function walk(id: string, depth: number): { x: number; y: number } {
+    const kids: string[] = children.get(id) ?? [];
+
+    if (kids.length === 0) {
+      const pos = {
+        x: depth * 180 + 80,
+        y: row * 110 + 60,
+      };
+      positions.set(id, pos);
+      row += 1;
+      return pos;
+    }
+
+    const childPositions: { x: number; y: number }[] = kids.map((kidId: string) =>
+      walk(kidId, depth + 1)
+    );
+
+    const avgY =
+      childPositions.reduce(
+        (sum: number, pos: { x: number; y: number }) => sum + pos.y,
+        0
+      ) / childPositions.length;
+
+    const pos = {
+      x: depth * 180 + 80,
+      y: avgY,
+    };
+
+    positions.set(id, pos);
+    return pos;
+  }
+
+  if (root) {
+    walk(root.id, 0);
+  }
+
+  const nodes: MapNode[] = possession.nodes.map((node: PossessionNode) => {
+    const pos = positions.get(node.id) ?? { x: 80, y: 60 };
+    return {
+      id: node.id,
+      label: node.label,
+      x: pos.x,
+      y: pos.y,
+      kind: node.kind,
+      timeSec: node.timeSec,
+    };
+  });
+
+  const edges: MapEdge[] = possession.edges
+    .map((edge: PossessionEdge): MapEdge | null => {
+      const from = positions.get(edge.from);
+      const to = positions.get(edge.to);
+
+      if (!from || !to) return null;
+
+      return {
+        id: edge.id,
+        x1: from.x + 50,
+        y1: from.y,
+        x2: to.x - 50,
+        y2: to.y,
+      };
+    })
+    .filter((edge: MapEdge | null): edge is MapEdge => edge !== null);
+
+  const width =
+    nodes.length > 0 ? Math.max(...nodes.map((node: MapNode) => node.x)) + 140 : 800;
+  const height =
+    nodes.length > 0 ? Math.max(...nodes.map((node: MapNode) => node.y)) + 90 : 240;
+
+  return {
+    nodes,
+    edges,
+    width: Math.max(width, 800),
+    height: Math.max(height, 240),
+  };
+}
+
+/* =============================
+   MAP VIEW
+============================= */
+
+function PossessionMap({
+  possession,
+  onSeek,
+}: {
+  possession: SavedPossession;
+  onSeek: (sec: number) => void;
+}) {
+  const graph = useMemo<LayoutResult>(() => layoutGraph(possession), [possession]);
+
+  return (
+    <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
+      <svg
+        width={graph.width}
+        height={graph.height}
+        viewBox={`0 0 ${graph.width} ${graph.height}`}
+        className="block"
+      >
+        {graph.edges.map((edge: MapEdge) => (
+          <path
+            key={edge.id}
+            d={`M ${edge.x1} ${edge.y1} C ${edge.x1 + 40} ${edge.y1}, ${edge.x2 - 40} ${edge.y2}, ${edge.x2} ${edge.y2}`}
+            fill="none"
+            stroke="rgba(255,255,255,0.15)"
+            strokeWidth="2"
+          />
+        ))}
+
+        {graph.nodes.map((node: MapNode) => (
+          <g
+            key={node.id}
+            transform={`translate(${node.x}, ${node.y})`}
+            style={{ cursor: "pointer" }}
+            onClick={() => onSeek(node.timeSec)}
+          >
+            <rect
+              x={-56}
+              y={-24}
+              rx={14}
+              ry={14}
+              width={112}
+              height={48}
+              fill={
+                node.kind === "branch"
+                  ? "rgba(163,230,53,0.12)"
+                  : node.kind === "outcome"
+                  ? "rgba(255,255,255,0.1)"
+                  : node.kind === "terminal"
+                  ? "rgba(248,113,113,0.12)"
+                  : "rgba(255,255,255,0.06)"
+              }
+              stroke={
+                node.kind === "branch"
+                  ? "rgba(163,230,53,0.35)"
+                  : node.kind === "outcome"
+                  ? "rgba(255,255,255,0.22)"
+                  : node.kind === "terminal"
+                  ? "rgba(248,113,113,0.35)"
+                  : "rgba(255,255,255,0.14)"
+              }
+            />
+            <text
+              x="0"
+              y="-2"
+              textAnchor="middle"
+              fontSize="12"
+              fill="white"
+              style={{ fontWeight: 500 }}
+            >
+              {node.label}
+            </text>
+            <text
+              x="0"
+              y="14"
+              textAnchor="middle"
+              fontSize="10"
+              fill="rgba(255,255,255,0.45)"
+            >
+              {formatTime(node.timeSec)}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
 }
 
 export default function ReviewPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const libraryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoName, setVideoName] = useState<string>("");
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentSec, setCurrentSec] = useState(0);
-  const [durationSec, setDurationSec] = useState(0);
+  const [durationSec, setDurationSec] = useState<number>(0);
+  const [currentSec, setCurrentSec] = useState<number>(0);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [chains, setChains] = useState<ChainSummary[]>([]);
-  const [activeChainId, setActiveChainId] = useState<string | null>(null);
-  const [node, setNode] = useState<NodeId>("start");
+  const [step, setStep] = useState<StepId>("selectPlayer");
+  const [events, setEvents] = useState<PossessionEvent[]>([]);
+  const [nodes, setNodes] = useState<PossessionNode[]>([]);
+  const [edges, setEdges] = useState<PossessionEdge[]>([]);
+  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
+  const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
 
-  const activeChain = useMemo(
-    () => chains.find((chain) => chain.id === activeChainId) ?? null,
-    [chains, activeChainId]
-  );
-
-  const suggestions = useMemo(() => {
-    switch (node) {
-      case "start":
-        return START_OPTIONS;
-      case "action":
-        return ACTION_OPTIONS;
-      case "lane":
-        return LANE_OPTIONS;
-      case "help":
-        return HELP_OPTIONS;
-      case "afterHelp":
-        return AFTER_HELP_OPTIONS;
-      case "finishType":
-        return FINISH_OPTIONS;
-      case "outcome":
-        return OUTCOME_OPTIONS;
-      case "branchStart":
-        return BRANCH_START_OPTIONS;
-      default:
-        return [];
-    }
-  }, [node]);
-
-  const groupedTree = useMemo(() => {
-    const map = new Map<string | undefined, ChainSummary[]>();
-
-    for (const chain of [...chains].sort((a, b) => a.startSec - b.startSec)) {
-      const key = chain.parentChainId;
-      const next = map.get(key) ?? [];
-      next.push(chain);
-      map.set(key, next);
-    }
-
-    return map;
-  }, [chains]);
-
-  const counts = useMemo(() => countLabels(chains), [chains]);
-
-  const progressPct = durationSec > 0 ? (currentSec / durationSec) * 100 : 0;
-  const activeRead = deriveRead(node, activeChain?.labels ?? []);
+  const [savedPossessions, setSavedPossessions] = useState<SavedPossession[]>([]);
+  const [selectedPossessionId, setSelectedPossessionId] = useState<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -248,63 +455,182 @@ export default function ReviewPage() {
     const video = videoRef.current;
     if (!video) return;
 
-    const onLoadedMetadata = () => {
-      setDurationSec(video.duration || 0);
-    };
+    const onLoaded = (): void => setDurationSec(video.duration || 0);
+    const onTime = (): void => setCurrentSec(video.currentTime || 0);
+    const onEnded = (): void => setIsPlaying(false);
 
-    const onTimeUpdate = () => {
-      setCurrentSec(video.currentTime || 0);
-    };
-
-    const onEnded = () => {
-      setIsPlaying(false);
-    };
-
-    video.addEventListener("loadedmetadata", onLoadedMetadata);
-    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("loadedmetadata", onLoaded);
+    video.addEventListener("timeupdate", onTime);
     video.addEventListener("ended", onEnded);
 
     return () => {
-      video.removeEventListener("loadedmetadata", onLoadedMetadata);
-      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("loadedmetadata", onLoaded);
+      video.removeEventListener("timeupdate", onTime);
       video.removeEventListener("ended", onEnded);
     };
   }, [videoUrl]);
 
-  function openFilePicker() {
-    inputRef.current?.click();
+  const selectedPossession = useMemo<SavedPossession | null>(() => {
+    return savedPossessions.find((p: SavedPossession) => p.id === selectedPossessionId) ?? null;
+  }, [savedPossessions, selectedPossessionId]);
+
+  const signal = useMemo(() => countSessionSignal(savedPossessions), [savedPossessions]);
+
+  const currentPlayerName = useMemo<string>(() => {
+    return PLAYERS.find((p: Player) => p.id === currentPlayerId)?.name ?? "No player";
+  }, [currentPlayerId]);
+
+  const currentFlowText = useMemo<string>(() => {
+    if (!events.length) return "Start possession. Pick the player with the ball.";
+
+    return events
+      .map((event: PossessionEvent) => {
+        if (event.step === "selectPlayer" && event.playerId) {
+          return PLAYERS.find((p: Player) => p.id === event.playerId)?.name ?? "Player";
+        }
+        if (event.step === "receiver" && event.nextPlayerId) {
+          const name =
+            PLAYERS.find((p: Player) => p.id === event.nextPlayerId)?.name ?? "Receiver";
+          return `Pass → ${name}`;
+        }
+        return event.label;
+      })
+      .join(" → ");
+  }, [events]);
+
+  const smartPrompt = useMemo<string>(() => {
+    switch (step) {
+      case "selectPlayer":
+        return "Who has the ball?";
+      case "trigger":
+        return "What started it?";
+      case "action":
+        return "What happened?";
+      case "location":
+        return "Where on floor?";
+      case "defense":
+        return "What did defense do?";
+      case "decision":
+        return "What did offense do?";
+      case "receiver":
+        return "Who received the pass?";
+      case "outcome":
+        return "How did the possession end?";
+      default:
+        return "Next decision.";
+    }
+  }, [step]);
+
+  const progressPct = durationSec > 0 ? (currentSec / durationSec) * 100 : 0;
+
+  const options = useMemo<Option[]>(() => {
+    switch (step) {
+      case "selectPlayer":
+        return PLAYERS.map((p: Player) => ({
+          label: p.name,
+          value: p.id,
+          tone: p.id === currentPlayerId ? "primary" : "normal",
+        }));
+      case "trigger":
+        return [
+          { label: "Catch", value: "Catch", tone: "primary" },
+          { label: "OREB", value: "OREB" },
+          { label: "Inbound", value: "Inbound" },
+          { label: "Push", value: "Push" },
+        ];
+      case "action":
+        return [
+          { label: "Downhill", value: "Downhill", tone: "primary" },
+          { label: "Shot", value: "Shot" },
+          { label: "Pass", value: "Pass" },
+          { label: "Turnover", value: "Turnover", tone: "danger" },
+        ];
+      case "location":
+        return [
+          { label: "Left Slot", value: "Left Slot" },
+          { label: "Middle", value: "Middle", tone: "primary" },
+          { label: "Right Slot", value: "Right Slot" },
+          { label: "Baseline", value: "Baseline" },
+          { label: "Nail", value: "Nail" },
+          { label: "Paint Touch", value: "Paint Touch" },
+        ];
+      case "defense":
+        return [
+          { label: "No Help", value: "No Help", tone: "primary" },
+          { label: "Help", value: "Help" },
+        ];
+      case "decision":
+        return [
+          { label: "Finish", value: "Finish", tone: "primary" },
+          { label: "Pass", value: "Pass" },
+          { label: "Reset", value: "Reset" },
+        ];
+      case "receiver":
+        return PLAYERS.filter((p: Player) => p.id !== currentPlayerId).map((p: Player) => ({
+          label: p.name,
+          value: p.id,
+        }));
+      case "outcome":
+        return [
+          { label: "Make", value: "Make", tone: "primary" },
+          { label: "Miss", value: "Miss" },
+          { label: "Foul", value: "Foul" },
+          { label: "Turnover", value: "Turnover", tone: "danger" },
+        ];
+      default:
+        return [];
+    }
+  }, [step, currentPlayerId]);
+
+  function openLibraryPicker(): void {
+    libraryInputRef.current?.click();
   }
 
-  function handleVideoUpload(file: File | null) {
-    if (!file) return;
+  function openCameraPicker(): void {
+    cameraInputRef.current?.click();
+  }
 
+  function handleUpload(file: File | null): void {
+    if (!file) return;
     if (!file.type.startsWith("video/")) {
-      alert("Please choose a video file.");
+      alert("Please upload a video file.");
       return;
     }
 
-    setEvents([]);
-    setChains([]);
-    setActiveChainId(null);
-    setNode("start");
-    setCurrentSec(0);
-    setDurationSec(0);
-    setIsPlaying(false);
-
-    setVideoUrl((prev) => {
+    setVideoUrl((prev: string | null) => {
       if (prev) URL.revokeObjectURL(prev);
       return URL.createObjectURL(file);
     });
 
     setVideoName(file.name);
+    setDurationSec(0);
+    setCurrentSec(0);
+    setIsPlaying(false);
+    clearCurrentPossession();
   }
 
-  function playPause() {
+  function clearCurrentPossession(): void {
+    setEvents([]);
+    setNodes([]);
+    setEdges([]);
+    setCurrentNodeId(null);
+    setCurrentPlayerId(null);
+    setStep("selectPlayer");
+  }
+
+  function resetAll(): void {
+    clearCurrentPossession();
+    setSavedPossessions([]);
+    setSelectedPossessionId(null);
+    setCurrentSec(0);
+  }
+
+  function playPause(): void {
     const video = videoRef.current;
     if (!video || !videoUrl) return;
 
     if (video.paused) {
-      video.play().catch(() => null);
+      void video.play();
       setIsPlaying(true);
     } else {
       video.pause();
@@ -312,7 +638,7 @@ export default function ReviewPage() {
     }
   }
 
-  function seekTo(sec: number) {
+  function seekTo(sec: number): void {
     const video = videoRef.current;
     if (!video || !videoUrl) return;
 
@@ -321,297 +647,253 @@ export default function ReviewPage() {
     setCurrentSec(safe);
   }
 
-  function ensureActiveChain(options?: {
-    parentChainId?: string;
-    parentEventId?: string;
-    depth?: number;
-  }) {
-    if (activeChainId) return activeChainId;
-
-    const id = uid();
-    const newChain: ChainSummary = {
-      id,
-      parentChainId: options?.parentChainId,
-      parentEventId: options?.parentEventId,
-      depth: options?.depth ?? 0,
-      labels: [],
-      startSec: currentSec,
-      closed: false,
+  function addGraphNode(label: string, kind: EventKind, playerId?: string): string {
+    const node: PossessionNode = {
+      id: uid(),
+      label,
+      kind,
+      playerId,
+      timeSec: currentSec,
     };
 
-    setChains((prev) => [...prev, newChain]);
-    setActiveChainId(id);
-    return id;
+    setNodes((prev: PossessionNode[]) => [...prev, node]);
+
+    if (currentNodeId) {
+      setEdges((prev: PossessionEdge[]) => [
+        ...prev,
+        {
+          id: uid(),
+          from: currentNodeId,
+          to: node.id,
+        },
+      ]);
+    }
+
+    setCurrentNodeId(node.id);
+    return node.id;
   }
 
-  function updateChain(chainId: string, updater: (chain: ChainSummary) => ChainSummary) {
-    setChains((prev) => prev.map((chain) => (chain.id === chainId ? updater(chain) : chain)));
-  }
-
-  function appendToChain(label: string, kind: EventKind) {
-    const chainId = activeChainId ?? ensureActiveChain();
-    const chain = chains.find((item) => item.id === chainId);
-    const depth = chain?.depth ?? 0;
-
-    const newEvent: TimelineEvent = {
+  function addEvent(
+    nextStep: StepId,
+    label: string,
+    kind: EventKind,
+    extra?: { playerId?: string; nextPlayerId?: string }
+  ): void {
+    const event: PossessionEvent = {
       id: uid(),
       timeSec: currentSec,
+      step,
       label,
-      chainId,
-      depth,
       kind,
+      playerId: extra?.playerId,
+      nextPlayerId: extra?.nextPlayerId,
     };
 
-    setEvents((prev) => [...prev, newEvent]);
-    updateChain(chainId, (current) => ({
-      ...current,
-      labels: [...current.labels, label],
-    }));
-
-    return { newEvent, chainId };
+    setEvents((prev: PossessionEvent[]) => [...prev, event]);
+    setStep(nextStep);
   }
 
-  function closeChain(chainId: string) {
-    updateChain(chainId, (chain) => ({
-      ...chain,
-      endSec: currentSec,
-      closed: true,
-    }));
-  }
+  function finishPossession(terminalLabel?: string): void {
+    const finalEvents: PossessionEvent[] = [...events];
+    const finalNodes: PossessionNode[] = [...nodes];
+    const finalEdges: PossessionEdge[] = [...edges];
 
-  function startBranch(parentChainId: string, parentEventId: string) {
-    const parent = chains.find((item) => item.id === parentChainId);
+    if (terminalLabel) {
+      const terminalEvent: PossessionEvent = {
+        id: uid(),
+        timeSec: currentSec,
+        step: "outcome",
+        label: terminalLabel,
+        kind: terminalLabel === "Turnover" ? "terminal" : "outcome",
+        playerId: currentPlayerId ?? undefined,
+      };
+      finalEvents.push(terminalEvent);
 
-    const branchId = uid();
-    const newChain: ChainSummary = {
-      id: branchId,
-      parentChainId,
-      parentEventId,
-      depth: (parent?.depth ?? 0) + 1,
-      labels: [],
-      startSec: currentSec,
-      closed: false,
+      const terminalNode: PossessionNode = {
+        id: uid(),
+        label: terminalLabel,
+        kind: terminalLabel === "Turnover" ? "terminal" : "outcome",
+        playerId: currentPlayerId ?? undefined,
+        timeSec: currentSec,
+      };
+      finalNodes.push(terminalNode);
+
+      if (currentNodeId) {
+        finalEdges.push({
+          id: uid(),
+          from: currentNodeId,
+          to: terminalNode.id,
+        });
+      }
+    }
+
+    if (!finalEvents.length) return;
+
+    const startSec = finalEvents[0]?.timeSec ?? currentSec;
+    const endSec = finalEvents[finalEvents.length - 1]?.timeSec ?? currentSec;
+
+    const saved: SavedPossession = {
+      id: uid(),
+      events: finalEvents,
+      nodes: finalNodes,
+      edges: finalEdges,
+      summary: buildSummary(finalEvents, PLAYERS),
+      startSec,
+      endSec,
     };
 
-    setChains((prev) => [...prev, newChain]);
-    setActiveChainId(branchId);
-    setNode("branchStart");
+    setSavedPossessions((prev: SavedPossession[]) => [saved, ...prev]);
+    setSelectedPossessionId(saved.id);
+    clearCurrentPossession();
   }
 
-  function resetFlow() {
-    setActiveChainId(null);
-    setNode("start");
-  }
-
-  function handleTag(value: string) {
+  function handleOptionClick(value: string): void {
     if (!videoUrl) return;
 
-    if (node === "start") {
-      appendToChain(value, "chain");
-      setNode("action");
+    if (step === "selectPlayer") {
+      const player = PLAYERS.find((p: Player) => p.id === value);
+      if (!player) return;
+
+      setCurrentPlayerId(player.id);
+      addGraphNode(player.name, "chain", player.id);
+      addEvent("trigger", player.name, "chain", { playerId: player.id });
       return;
     }
 
-    if (node === "branchStart") {
-      const { chainId } = appendToChain(value, "branch");
+    if (step === "trigger") {
+      addGraphNode(value, "chain", currentPlayerId ?? undefined);
+      addEvent("action", value, "chain", { playerId: currentPlayerId ?? undefined });
+      return;
+    }
 
-      if (value === "Catch" || value === "Pass") {
-        setNode("action");
-        return;
-      }
-
-      if (value === "Shot") {
-        setNode("outcome");
-        return;
-      }
-
-      if (value === "Downhill") {
-        setNode("lane");
-        return;
-      }
-
+    if (step === "action") {
       if (value === "Turnover") {
-        closeChain(chainId);
-        resetFlow();
-      }
-
-      return;
-    }
-
-    if (node === "action") {
-      if (value === "Pass") {
-        const { newEvent, chainId } = appendToChain("Pass", "branch");
-        closeChain(chainId);
-        startBranch(chainId, newEvent.id);
+        finishPossession("Turnover");
         return;
       }
 
-      if (value === "Turnover") {
-        const { chainId } = appendToChain("Turnover", "deadball");
-        closeChain(chainId);
-        resetFlow();
-        return;
-      }
-
-      appendToChain(value, "chain");
-
-      if (value === "Downhill") {
-        setNode("lane");
-        return;
-      }
-
-      if (value === "Shot") {
-        setNode("outcome");
-      }
-
+      addGraphNode(value, value === "Pass" ? "branch" : "chain", currentPlayerId ?? undefined);
+      addEvent(
+        value === "Downhill" ? "location" : value === "Shot" ? "outcome" : "receiver",
+        value,
+        value === "Pass" ? "branch" : "chain",
+        { playerId: currentPlayerId ?? undefined }
+      );
       return;
     }
 
-    if (node === "lane") {
-      appendToChain(value, "chain");
-      setNode("help");
+    if (step === "location") {
+      addGraphNode(value, "chain", currentPlayerId ?? undefined);
+      addEvent("defense", value, "chain", { playerId: currentPlayerId ?? undefined });
       return;
     }
 
-    if (node === "help") {
-      appendToChain(value, "chain");
-
-      if (value === "Help") {
-        setNode("afterHelp");
-      } else {
-        setNode("finishType");
-      }
-
+    if (step === "defense") {
+      addGraphNode(value, "chain", currentPlayerId ?? undefined);
+      addEvent("decision", value, "chain", { playerId: currentPlayerId ?? undefined });
       return;
     }
 
-    if (node === "afterHelp") {
-      if (value === "Pass") {
-        const { newEvent, chainId } = appendToChain("Pass", "branch");
-        closeChain(chainId);
-        startBranch(chainId, newEvent.id);
-        return;
-      }
-
+    if (step === "decision") {
       if (value === "Reset") {
-        const { chainId } = appendToChain("Reset", "deadball");
-        closeChain(chainId);
-        resetFlow();
+        finishPossession("Reset");
         return;
       }
 
-      appendToChain(value, "chain");
-
-      if (value === "Finish") {
-        setNode("finishType");
-      }
-
+      addGraphNode(value, value === "Pass" ? "branch" : "chain", currentPlayerId ?? undefined);
+      addEvent(
+        value === "Pass" ? "receiver" : "outcome",
+        value,
+        value === "Pass" ? "branch" : "chain",
+        { playerId: currentPlayerId ?? undefined }
+      );
       return;
     }
 
-    if (node === "finishType") {
-      if (value === "Kickout") {
-        const { newEvent, chainId } = appendToChain("Kickout", "branch");
-        closeChain(chainId);
-        startBranch(chainId, newEvent.id);
-        return;
-      }
+    if (step === "receiver") {
+      const player = PLAYERS.find((p: Player) => p.id === value);
+      if (!player) return;
 
-      appendToChain(value, "chain");
-      setNode("outcome");
+      addGraphNode(player.name, "branch", player.id);
+      setCurrentPlayerId(player.id);
+      addEvent("action", `Pass → ${player.name}`, "branch", {
+        playerId: currentPlayerId ?? undefined,
+        nextPlayerId: player.id,
+      });
       return;
     }
 
-    if (node === "outcome") {
-      const { chainId } = appendToChain(value, "outcome");
-      closeChain(chainId);
-      resetFlow();
+    if (step === "outcome") {
+      finishPossession(value);
     }
   }
 
-  function undoLast() {
+  function undoLast(): void {
     if (!events.length) return;
 
-    const nextEvents = events.slice(0, -1);
+    const nextEvents: PossessionEvent[] = events.slice(0, -1);
     setEvents(nextEvents);
 
-    const nextChainsMap = new Map<string, ChainSummary>();
-
-    for (const chain of chains) {
-      nextChainsMap.set(chain.id, {
-        ...chain,
-        labels: [],
-        closed: false,
-        endSec: undefined,
-      });
+    if (!nextEvents.length) {
+      setNodes([]);
+      setEdges([]);
+      setCurrentNodeId(null);
+      setCurrentPlayerId(null);
+      setStep("selectPlayer");
+      return;
     }
+
+    const rebuiltNodes: PossessionNode[] = [];
+    const rebuiltEdges: PossessionEdge[] = [];
+    let prevNodeId: string | null = null;
+    let rebuiltPlayerId: string | null = null;
 
     for (const event of nextEvents) {
-      const chain = nextChainsMap.get(event.chainId);
-      if (!chain) continue;
-      chain.labels.push(event.label);
+      let label = event.label;
+      let nodePlayerId = event.playerId;
+
+      if (event.step === "receiver" && event.nextPlayerId) {
+        label = PLAYERS.find((p: Player) => p.id === event.nextPlayerId)?.name ?? label;
+        nodePlayerId = event.nextPlayerId;
+        rebuiltPlayerId = event.nextPlayerId;
+      } else if (event.step === "selectPlayer" && event.playerId) {
+        rebuiltPlayerId = event.playerId;
+      }
+
+      const node: PossessionNode = {
+        id: uid(),
+        label,
+        playerId: nodePlayerId,
+        timeSec: event.timeSec,
+        kind: event.kind,
+      };
+
+      rebuiltNodes.push(node);
+
+      if (prevNodeId) {
+        rebuiltEdges.push({
+          id: uid(),
+          from: prevNodeId,
+          to: node.id,
+        });
+      }
+
+      prevNodeId = node.id;
     }
 
-    const nextChains = Array.from(nextChainsMap.values()).filter((chain) => chain.labels.length > 0);
-    setChains(nextChains);
+    setNodes(rebuiltNodes);
+    setEdges(rebuiltEdges);
+    setCurrentNodeId(prevNodeId);
 
-    const lastEvent = nextEvents[nextEvents.length - 1];
-    if (!lastEvent) {
-      setActiveChainId(null);
-      setNode("start");
-      return;
-    }
-
-    const currentChain = nextChains.find((chain) => chain.id === lastEvent.chainId) ?? null;
-    setActiveChainId(currentChain?.id ?? null);
-
-    const lastLabel = lastEvent.label;
-
-    if (["Catch", "OREB", "Inbound", "Push"].includes(lastLabel)) {
-      setNode("action");
-      return;
-    }
-
-    if (lastLabel === "Downhill") {
-      setNode("lane");
-      return;
-    }
-
-    if (["Left", "Middle", "Right"].includes(lastLabel)) {
-      setNode("help");
-      return;
-    }
-
-    if (lastLabel === "Help") {
-      setNode("afterHelp");
-      return;
-    }
-
-    if (lastLabel === "No Help" || lastLabel === "Finish") {
-      setNode("finishType");
-      return;
-    }
-
-    if (["Lay", "Floater", "Pull-Up", "Shot"].includes(lastLabel)) {
-      setNode("outcome");
-      return;
-    }
-
-    if (["Pass", "Kickout"].includes(lastLabel)) {
-      setNode("branchStart");
-      return;
-    }
-
-    setNode("start");
+    const last = nextEvents[nextEvents.length - 1];
+    setCurrentPlayerId(last.nextPlayerId ?? last.playerId ?? rebuiltPlayerId);
+    setStep(stepBackFromEvent(last));
   }
 
-  function exportReview() {
+  function exportSession(): void {
     const payload = {
-      exportedAt: new Date().toISOString(),
       videoName,
-      durationSec,
-      chains,
-      events,
+      savedPossessions,
     };
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -619,147 +901,96 @@ export default function ReviewPage() {
     });
 
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "axis-review.json";
-    anchor.click();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "axis-capture-v2.json";
+    a.click();
     URL.revokeObjectURL(url);
   }
 
-  function renderTree(parentChainId?: string) {
-    const children = groupedTree.get(parentChainId) ?? [];
-    if (!children.length) return null;
-
     return (
-      <div className="space-y-3">
-        {children.map((chain) => (
-          <div key={chain.id} className="space-y-3">
-            <button
-              onClick={() => {
-                setActiveChainId(chain.id);
-                seekTo(chain.startSec);
-              }}
-              className={`w-full rounded-2xl border px-4 py-3 text-left transition hover:border-white/25 ${
-                activeChainId === chain.id
-                  ? "border-lime-400/50 bg-lime-400/[0.08]"
-                  : "border-white/10 bg-white/[0.03]"
-              }`}
-              style={{ marginLeft: `${chain.depth * 16}px` }}
-            >
-              <div className="mb-1 flex items-center justify-between gap-3">
-                <div className="text-xs uppercase tracking-[0.22em] text-white/35">
-                  {chain.depth === 0 ? "Primary chain" : `Branch ${chain.depth}`}
-                </div>
-                <div className="text-xs text-white/35">{formatTime(chain.startSec)}</div>
-              </div>
-
-              <div className="text-sm text-white/90">{chain.labels.join(" → ")}</div>
-
-              <div className="mt-2 text-xs text-white/35">
-                {chain.closed ? "Closed" : "Open"} · {chain.labels.length} steps
-              </div>
-            </button>
-
-            <div className="ml-3 border-l border-white/10 pl-3">{renderTree(chain.id)}</div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  const sortedChains = [...chains].sort((a, b) => a.startSec - b.startSec);
-
-  return (
     <main className="min-h-screen bg-black text-white">
       <input
-        ref={inputRef}
+        ref={libraryInputRef}
         type="file"
         accept="video/*"
         className="hidden"
-        onChange={(e) => handleVideoUpload(e.target.files?.[0] ?? null)}
+        onChange={(e) => handleUpload(e.target.files?.[0] ?? null)}
+      />
+
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="video/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => handleUpload(e.target.files?.[0] ?? null)}
       />
 
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 md:px-6">
         <header className="flex items-center justify-between border-b border-white/10 pb-3">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-white/35">Axis</p>
-            <h1 className="text-lg font-semibold tracking-tight">Review</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Capture V2</h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={openFilePicker}
-              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/80 transition hover:border-white/25"
+              onClick={openCameraPicker}
+              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/85 transition hover:border-white/25"
             >
-              Upload Video
+              Record
             </button>
             <button
-              onClick={exportReview}
-              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/80 transition hover:border-white/25 disabled:opacity-40"
-              disabled={!chains.length}
+              onClick={openLibraryPicker}
+              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/85 transition hover:border-white/25"
+            >
+              Library
+            </button>
+            <button
+              onClick={exportSession}
+              disabled={!savedPossessions.length}
+              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/85 transition hover:border-white/25 disabled:opacity-40"
             >
               Export
             </button>
             <button
-              onClick={() => {
-                setEvents([]);
-                setChains([]);
-                setActiveChainId(null);
-                setNode("start");
-                setCurrentSec(0);
-              }}
-              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/80 transition hover:border-white/25"
+              onClick={resetAll}
+              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/85 transition hover:border-white/25"
             >
-              New Clip
+              Reset
             </button>
           </div>
         </header>
 
         {!videoUrl ? (
-          <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 md:p-8">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="text-xs uppercase tracking-[0.28em] text-lime-400">Axis Review</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-5xl">
-                Upload a video.
-                <br />
-                Build the possession.
-              </h2>
-              <p className="mt-4 text-base leading-7 text-white/60">
-                Bring in one game or practice file. Then tag decisions, follow branches, and turn
-                possessions into signal.
-              </p>
+          <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center">
+            <p className="text-xs uppercase tracking-[0.28em] text-lime-400">Capture</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-5xl">
+              Map the possession.
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-white/60">
+              Open the camera or pick from library. Then map the possession as player, trigger,
+              action, floor location, defense, transfer, and outcome.
+            </p>
 
-              <div className="mt-8">
-                <button
-                  onClick={openFilePicker}
-                  className="rounded-2xl border border-lime-400/45 bg-lime-400 px-6 py-4 text-base font-medium text-black transition hover:opacity-90"
-                >
-                  Choose Video
-                </button>
-              </div>
-
-              <div className="mt-8 grid gap-3 text-left md:grid-cols-3">
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/35">1. Upload</p>
-                  <p className="mt-2 text-sm text-white/80">Open one video in the review space.</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/35">2. Tag</p>
-                  <p className="mt-2 text-sm text-white/80">
-                    Follow the next true decision, not random buttons.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/35">3. Build</p>
-                  <p className="mt-2 text-sm text-white/80">
-                    Turn one possession into cards, branches, and history.
-                  </p>
-                </div>
-              </div>
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
+              <button
+                onClick={openCameraPicker}
+                className="rounded-2xl bg-lime-400 px-6 py-4 text-base font-medium text-black transition hover:opacity-90"
+              >
+                Record Video
+              </button>
+              <button
+                onClick={openLibraryPicker}
+                className="rounded-2xl border border-white/12 px-6 py-4 text-base font-medium text-white transition hover:border-white/25"
+              >
+                Choose From Library
+              </button>
             </div>
           </section>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_360px]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_390px]">
             <section className="min-w-0">
               <div className="sticky top-0 z-20 overflow-hidden rounded-2xl border border-white/10 bg-[#050505]">
                 <div className="relative bg-black">
@@ -768,7 +999,7 @@ export default function ReviewPage() {
                     src={videoUrl}
                     controls={false}
                     playsInline
-                    className="h-[220px] w-full bg-black object-contain md:h-[260px]"
+                    className="h-[220px] w-full bg-black object-contain md:h-[280px]"
                   />
                 </div>
 
@@ -795,28 +1026,25 @@ export default function ReviewPage() {
                     />
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
                     <button
                       onClick={playPause}
                       className="rounded-xl border border-white/12 px-3 py-2 text-sm transition hover:border-white/25"
                     >
                       {isPlaying ? "Pause" : "Play"}
                     </button>
-
                     <button
                       onClick={() => seekTo(currentSec - 2)}
                       className="rounded-xl border border-white/12 px-3 py-2 text-sm transition hover:border-white/25"
                     >
                       -2s
                     </button>
-
                     <button
                       onClick={() => seekTo(currentSec + 2)}
                       className="rounded-xl border border-white/12 px-3 py-2 text-sm transition hover:border-white/25"
                     >
                       +2s
                     </button>
-
                     <button
                       onClick={undoLast}
                       disabled={!events.length}
@@ -824,52 +1052,57 @@ export default function ReviewPage() {
                     >
                       Undo
                     </button>
+                    <button
+                      onClick={() => finishPossession()}
+                      disabled={!events.length}
+                      className="rounded-xl border border-white/12 px-3 py-2 text-sm transition hover:border-white/25 disabled:opacity-40"
+                    >
+                      Finish
+                    </button>
 
                     <div className="ml-auto text-xs uppercase tracking-[0.22em] text-white/35">
-                      One playhead
+                      {videoName}
                     </div>
-                  </div>
-
-                  <div className="mt-3 text-xs text-white/35">
-                    {videoName ? `Loaded: ${videoName}` : "Video loaded"}
                   </div>
                 </div>
               </div>
 
               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                 <div className="mb-3 flex items-start justify-between gap-4">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                      Current chain
+                      Current possession
                     </p>
-
-                    <div className="mt-2 flex min-h-[52px] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-3">
-                      {activeChain?.labels.length ? (
-                        <>
-                          {activeChain.labels.map((label, index) => (
-                            <span
-                              key={`${label}-${index}`}
-                              className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-sm text-white/88"
-                            >
-                              {label}
-                            </span>
-                          ))}
-                          <span className="text-sm text-white/35">→ ?</span>
-                        </>
+                    <div className="mt-2 flex min-h-[56px] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white/88">
+                      {events.length ? (
+                        events.map((event: PossessionEvent) => (
+                          <span
+                            key={event.id}
+                            className={`rounded-full border px-2.5 py-1 ${badgeTone(event.kind)}`}
+                          >
+                            {event.step === "receiver" && event.nextPlayerId
+                              ? `Pass → ${
+                                  PLAYERS.find((p: Player) => p.id === event.nextPlayerId)?.name ??
+                                  event.label
+                                }`
+                              : event.label}
+                          </span>
+                        ))
                       ) : (
-                        <span className="text-sm text-white/50">Start → ?</span>
+                        <span className="text-white/45">{currentFlowText}</span>
                       )}
                     </div>
                   </div>
 
                   <div className="w-full max-w-[240px] rounded-2xl border border-white/10 bg-black/40 px-3 py-3">
                     <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
-                      Smart read
+                      Active player
                     </p>
-                    <p className="mt-1 text-sm text-white/85">{activeRead}</p>
-                    <p className="mt-2 text-[11px] text-white/35">
-                      Node: <span className="text-white/65">{node}</span>
+                    <p className="mt-1 text-sm text-white/90">{currentPlayerName}</p>
+                    <p className="mt-3 text-[10px] uppercase tracking-[0.22em] text-white/35">
+                      Prompt
                     </p>
+                    <p className="mt-1 text-sm text-white/80">{smartPrompt}</p>
                   </div>
                 </div>
 
@@ -877,21 +1110,19 @@ export default function ReviewPage() {
                   <p className="text-xs uppercase tracking-[0.22em] text-white/35">
                     What happened next
                   </p>
-                  <p className="text-xs text-white/35">
-                    {activeChain ? `Depth ${activeChain.depth}` : "Depth 0"}
-                  </p>
+                  <p className="text-xs text-white/35">{step}</p>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  {suggestions.map((option) => (
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {options.map((option: Option) => (
                     <button
                       key={option.value}
-                      onClick={() => handleTag(option.value)}
+                      onClick={() => handleOptionClick(option.value)}
                       className={`rounded-2xl border px-4 py-4 text-left transition ${buttonTone(
                         option.tone
                       )}`}
                     >
-                      <div className="text-sm font-medium">{option.title}</div>
+                      <div className="text-sm font-medium">{option.label}</div>
                       <div className="mt-1 text-xs text-white/40">
                         Stamp at {formatTime(currentSec)}
                       </div>
@@ -905,130 +1136,236 @@ export default function ReviewPage() {
                   <p className="text-xs uppercase tracking-[0.22em] text-white/35">
                     Possession cards
                   </p>
-                  <p className="text-xs text-white/35">{sortedChains.length} cards</p>
+                  <p className="text-xs text-white/35">{savedPossessions.length} saved</p>
                 </div>
 
-                {sortedChains.length ? (
+                {savedPossessions.length ? (
                   <div className="grid gap-3">
-                    {sortedChains.map((chain, index) => (
-                      <button
-                        key={chain.id}
-                        onClick={() => {
-                          setActiveChainId(chain.id);
-                          seekTo(chain.startSec);
-                        }}
-                        className={`rounded-2xl border p-4 text-left transition hover:border-white/25 ${
-                          activeChainId === chain.id
-                            ? "border-lime-400/50 bg-lime-400/[0.08]"
-                            : "border-white/10 bg-black/30"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                              Possession {index + 1}
-                              {chain.depth > 0 ? ` · Branch ${chain.depth}` : ""}
-                            </p>
-                            <p className="mt-2 text-sm text-white/90">
-                              {chain.labels.join(" → ")}
-                            </p>
+                    {savedPossessions.map((possession: SavedPossession, index: number) => {
+                      const hasBranch = possession.events.some(
+                        (event: PossessionEvent) => event.kind === "branch"
+                      );
+                      const finalOutcome =
+                        [...possession.events]
+                          .reverse()
+                          .find((event: PossessionEvent) => event.step === "outcome")?.label ??
+                        "Open";
+
+                      return (
+                        <button
+                          key={possession.id}
+                          onClick={() => {
+                            setSelectedPossessionId(possession.id);
+                            seekTo(possession.startSec);
+                          }}
+                          className={`rounded-2xl border p-4 text-left transition hover:border-white/25 ${
+                            selectedPossessionId === possession.id
+                              ? "border-lime-400/50 bg-lime-400/[0.08]"
+                              : "border-white/10 bg-black/30"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+                                Possession {savedPossessions.length - index}
+                              </p>
+                              <p className="mt-2 text-sm text-white/88">{possession.summary}</p>
+                            </div>
+
+                            <div className="text-right text-xs text-white/35">
+                              <div>{formatTime(possession.startSec)}</div>
+                              <div className="mt-1">{formatTime(possession.endSec)}</div>
+                            </div>
                           </div>
 
-                          <div className="text-right text-xs text-white/35">
-                            <div>{formatTime(chain.startSec)}</div>
-                            <div className="mt-1">{chain.closed ? "Closed" : "Open"}</div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {possession.events.slice(0, 8).map((event: PossessionEvent) => (
+                              <span
+                                key={event.id}
+                                className={`rounded-full border px-2.5 py-1 text-xs ${badgeTone(
+                                  event.kind
+                                )}`}
+                              >
+                                {event.step === "receiver" && event.nextPlayerId
+                                  ? `Pass → ${
+                                      PLAYERS.find((p: Player) => p.id === event.nextPlayerId)
+                                        ?.name ?? event.label
+                                    }`
+                                  : event.label}
+                              </span>
+                            ))}
+
+                            {possession.events.length > 8 ? (
+                              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/45">
+                                +{possession.events.length - 8} more
+                              </span>
+                            ) : null}
                           </div>
-                        </div>
 
-                        <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/70">
-                          {summarizeChain(chain.labels)}
-                        </div>
-                      </button>
-                    ))}
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                              <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+                                Outcome
+                              </div>
+                              <div className="mt-1 text-sm text-white/90">{finalOutcome}</div>
+                            </div>
+
+                            <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                              <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+                                Nodes
+                              </div>
+                              <div className="mt-1 text-sm text-white/90">
+                                {possession.nodes.length}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                              <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+                                Branch
+                              </div>
+                              <div className="mt-1 text-sm text-white/90">
+                                {hasBranch ? "Yes" : "No"}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <div className="text-sm text-white/35">No possession cards yet.</div>
+                  <div className="text-sm text-white/35">No completed possessions yet.</div>
                 )}
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                    Event timeline
-                  </p>
-                  <p className="text-xs text-white/35">{events.length} events</p>
-                </div>
-
-                {events.length ? (
-                  <div className="flex flex-wrap gap-2">
-                    {events.map((event) => (
-                      <button
-                        key={event.id}
-                        onClick={() => seekTo(event.timeSec)}
-                        className={`rounded-full border px-3 py-1.5 text-sm transition hover:border-white/25 ${eventTone(
-                          event.kind
-                        )}`}
-                      >
-                        {formatTime(event.timeSec)} — {event.label}
-                        {event.kind === "branch" ? " → branch" : ""}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-white/35">No events yet.</div>
-                )}
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                    Possession tree
-                  </p>
-                  <p className="text-xs text-white/35">{chains.length} chains</p>
-                </div>
-
-                {chains.length ? renderTree(undefined) : <div className="text-sm text-white/35">No branches yet.</div>}
               </div>
             </section>
 
             <aside className="min-w-0">
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-white/35">Session signal</p>
+                <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+                  Session signal
+                </p>
 
                 <div className="mt-3 grid gap-2">
                   <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
-                    Downhill: <span className="text-white">{counts.downhill}</span>
+                    Possessions: <span className="text-white">{signal.possessions}</span>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
-                    Help: <span className="text-white">{counts.help}</span>
+                    Downhill: <span className="text-white">{signal.downhill}</span>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
-                    No Help: <span className="text-white">{counts.noHelp}</span>
+                    Shots: <span className="text-white">{signal.shots}</span>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
-                    Pass: <span className="text-white">{counts.pass}</span>
+                    Help: <span className="text-white">{signal.help}</span>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
-                    Kickout: <span className="text-white">{counts.kickout}</span>
+                    No Help: <span className="text-white">{signal.noHelp}</span>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
-                    Make: <span className="text-white">{counts.make}</span>
+                    Passes: <span className="text-white">{signal.passes}</span>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
-                    Miss: <span className="text-white">{counts.miss}</span>
+                    Finishes: <span className="text-white">{signal.finishes}</span>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
-                    Turnover: <span className="text-white">{counts.turnover}</span>
+                    Makes: <span className="text-white">{signal.makes}</span>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                    Misses: <span className="text-white">{signal.misses}</span>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                    Fouls: <span className="text-white">{signal.fouls}</span>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                    Turnovers: <span className="text-white">{signal.turnovers}</span>
                   </div>
                 </div>
               </div>
 
               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-white/35">System is live</p>
+                <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+                  Selected possession
+                </p>
+
+                {selectedPossession ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-2xl border border-white/10 bg-black/30 p-3 text-sm text-white/85">
+                      {selectedPossession.summary}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                        Start:{" "}
+                        <span className="text-white">
+                          {formatTime(selectedPossession.startSec)}
+                        </span>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                        End:{" "}
+                        <span className="text-white">
+                          {formatTime(selectedPossession.endSec)}
+                        </span>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                        Nodes: <span className="text-white">{selectedPossession.nodes.length}</span>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                        Links: <span className="text-white">{selectedPossession.edges.length}</span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
+                          Decision map
+                        </p>
+                        <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
+                          Tap node to jump
+                        </p>
+                      </div>
+
+                      <PossessionMap possession={selectedPossession} onSeek={seekTo} />
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                      <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
+                        Decision path
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedPossession.events.map((event: PossessionEvent) => (
+                          <button
+                            key={event.id}
+                            onClick={() => seekTo(event.timeSec)}
+                            className={`rounded-full border px-2.5 py-1 text-xs transition hover:border-white/25 ${badgeTone(
+                              event.kind
+                            )}`}
+                          >
+                            {event.step === "receiver" && event.nextPlayerId
+                              ? `Pass → ${
+                                  PLAYERS.find((p: Player) => p.id === event.nextPlayerId)?.name ??
+                                  event.label
+                                }`
+                              : event.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 text-sm text-white/35">
+                    Pick a possession card to inspect the map.
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+                  System state
+                </p>
 
                 <div className="mt-3 space-y-3 text-sm leading-6 text-white/78">
-                  <p>Upload the file. Build the chain. Let the possession split when the game splits.</p>
-                  <p>Cards make the review readable. Branches make it honest.</p>
+                  <p>Player first. Downhill forces location. Pass transfers the next decision.</p>
+                  <p>Cards hold the possession. The side panel reads the structure.</p>
                 </div>
               </div>
             </aside>
