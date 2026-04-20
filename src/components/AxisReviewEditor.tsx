@@ -7,29 +7,17 @@ type Props = {
 };
 
 type ActionType =
-  | "Catch"
-  | "OREB"
-  | "Inbound"
-  | "Push"
-  | "Drive Left"
-  | "Drive Middle"
-  | "Drive Right"
+  | "Downhill"
   | "Pass"
   | "Shot"
   | "Reset"
   | "Turnover"
   | "Help"
   | "No Help"
-  | "Beat Man"
   | "Cut Off"
-  | "Paint Touch"
-  | "Pick Up Dribble"
-  | "Kick Out"
   | "Finish"
-  | "Swing"
   | "Make"
   | "Miss"
-  | "Blocked"
   | "Foul";
 
 type ChainNode = {
@@ -44,38 +32,20 @@ type CompletedPossession = {
   note: string;
 };
 
-const START_ACTIONS: ActionType[] = ["Catch", "OREB", "Inbound", "Push"];
-
 const END_ACTIONS: ActionType[] = ["Make", "Miss", "Turnover", "Foul", "Reset"];
 
 const ACTION_STYLES: Record<ActionType, string> = {
-  Catch: "border-neutral-500 text-neutral-200 bg-neutral-500/10",
-  OREB: "border-lime-400 text-lime-300 bg-lime-500/10",
-  Inbound: "border-neutral-500 text-neutral-200 bg-neutral-500/10",
-  Push: "border-sky-400 text-sky-300 bg-sky-500/10",
-
-  "Drive Left": "border-sky-400 text-sky-300 bg-sky-500/10",
-  "Drive Middle": "border-sky-400 text-sky-300 bg-sky-500/10",
-  "Drive Right": "border-sky-400 text-sky-300 bg-sky-500/10",
-
+  Downhill: "border-sky-400 text-sky-300 bg-sky-500/10",
   Pass: "border-violet-400 text-violet-300 bg-violet-500/10",
   Shot: "border-emerald-400 text-emerald-300 bg-emerald-500/10",
   Reset: "border-neutral-500 text-neutral-200 bg-neutral-500/10",
   Turnover: "border-red-400 text-red-300 bg-red-500/10",
-
   Help: "border-pink-400 text-pink-300 bg-pink-500/10",
   "No Help": "border-cyan-400 text-cyan-300 bg-cyan-500/10",
-  "Beat Man": "border-teal-400 text-teal-300 bg-teal-500/10",
   "Cut Off": "border-orange-400 text-orange-300 bg-orange-500/10",
-  "Paint Touch": "border-yellow-400 text-yellow-300 bg-yellow-500/10",
-  "Pick Up Dribble": "border-amber-400 text-amber-300 bg-amber-500/10",
-  "Kick Out": "border-fuchsia-400 text-fuchsia-300 bg-fuchsia-500/10",
-  Finish: "border-green-400 text-green-300 bg-green-500/10",
-  Swing: "border-indigo-400 text-indigo-300 bg-indigo-500/10",
-
+  Finish: "border-lime-400 text-lime-300 bg-lime-500/10",
   Make: "border-green-400 text-green-300 bg-green-500/10",
   Miss: "border-neutral-400 text-neutral-300 bg-neutral-400/10",
-  Blocked: "border-rose-400 text-rose-300 bg-rose-500/10",
   Foul: "border-yellow-400 text-yellow-300 bg-yellow-500/10",
 };
 
@@ -100,71 +70,28 @@ function downloadText(filename: string, content: string) {
 
 function getNextActions(lastAction: ActionType | null): ActionType[] {
   if (!lastAction) {
-    return START_ACTIONS;
+    return ["Downhill", "Pass", "Shot", "Reset", "Turnover"];
   }
 
   switch (lastAction) {
-    case "Catch":
-    case "OREB":
-    case "Inbound":
-    case "Push":
-      return [
-        "Drive Left",
-        "Drive Middle",
-        "Drive Right",
-        "Pass",
-        "Shot",
-        "Reset",
-        "Turnover",
-      ];
-
-    case "Drive Left":
-    case "Drive Middle":
-    case "Drive Right":
-      return [
-        "Help",
-        "No Help",
-        "Beat Man",
-        "Cut Off",
-        "Paint Touch",
-        "Pick Up Dribble",
-        "Pass",
-        "Shot",
-        "Turnover",
-        "Foul",
-      ];
+    case "Downhill":
+      return ["Help", "No Help", "Cut Off"];
 
     case "Help":
-      return ["Pass", "Kick Out", "Shot", "Turnover", "Foul"];
-
-    case "No Help":
-      return ["Finish", "Shot", "Pass", "Turnover", "Foul"];
-
-    case "Beat Man":
-      return ["Paint Touch", "Finish", "Pass", "Shot", "Foul"];
-
-    case "Cut Off":
-      return ["Reset", "Pass", "Shot", "Turnover"];
-
-    case "Paint Touch":
-      return ["Finish", "Pass", "Kick Out", "Shot", "Foul"];
-
-    case "Pick Up Dribble":
       return ["Pass", "Shot", "Turnover"];
 
-    case "Pass":
-      return ["Shot", "Swing", "Reset", "Turnover"];
+    case "No Help":
+      return ["Finish", "Shot", "Pass"];
 
-    case "Kick Out":
-    case "Swing":
-      return ["Shot", "Pass", "Reset", "Turnover"];
+    case "Cut Off":
+      return ["Reset", "Pass", "Turnover"];
+
+    case "Pass":
+      return ["Shot", "Reset", "Turnover"];
 
     case "Finish":
     case "Shot":
-      return ["Make", "Miss", "Blocked", "Foul"];
-
-    case "Blocked":
-      return ["OREB", "Turnover", "Reset"];
+      return ["Make", "Miss", "Foul"];
 
     case "Make":
     case "Miss":
@@ -180,22 +107,14 @@ function getNextActions(lastAction: ActionType | null): ActionType[] {
 
 function classifyPossession(nodes: ChainNode[]) {
   const actions = nodes.map((node) => node.action);
-
   const has = (action: ActionType) => actions.includes(action);
 
-  if (has("Drive Left") || has("Drive Middle") || has("Drive Right")) {
-    if (has("Help") && has("Pass")) return "Advantage Created";
-    if (has("No Help") && has("Pass")) return "Passed Up Advantage";
-    if (has("Paint Touch") && has("Miss")) return "Paint Touch Miss";
-    if (has("Paint Touch") && has("Make")) return "Paint Touch Make";
-  }
-
-  if (has("Catch") && has("Shot") && has("Miss") && !has("Paint Touch")) {
-    return "Empty Possession";
-  }
-
+  if (has("Downhill") && has("Help") && has("Pass")) return "Advantage Created";
+  if (has("Downhill") && has("No Help") && has("Pass")) return "Passed Up Advantage";
+  if (has("Downhill") && has("Shot") && has("Miss")) return "Missed Downhill Shot";
+  if (has("Shot") && has("Miss") && !has("Downhill")) return "Empty Possession";
   if (has("Turnover")) return "Turnover";
-  if (has("Foul")) return "Foul Drawn / Foul End";
+  if (has("Foul")) return "Foul";
   if (has("Make")) return "Scored";
   if (has("Miss")) return "Missed Shot";
 
@@ -213,6 +132,7 @@ export default function AxisReviewEditor({ videoUrl }: Props) {
   const [completedPossessions, setCompletedPossessions] = useState<CompletedPossession[]>([]);
   const [selectedPossessionId, setSelectedPossessionId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [justAutoFinishedId, setJustAutoFinishedId] = useState<string | null>(null);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -280,6 +200,21 @@ export default function AxisReviewEditor({ videoUrl }: Props) {
     setCurrentTime(time);
   }
 
+  function saveCompletedPossession(nodes: ChainNode[]) {
+    if (!nodes.length) return;
+
+    const newPossession: CompletedPossession = {
+      id: `pos-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      nodes,
+      note: "",
+    };
+
+    setCompletedPossessions((prev) => [newPossession, ...prev]);
+    setSelectedPossessionId(newPossession.id);
+    setNoteDraft("");
+    return newPossession.id;
+  }
+
   function addAction(action: ActionType) {
     const node: ChainNode = {
       id: `${action}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -287,30 +222,35 @@ export default function AxisReviewEditor({ videoUrl }: Props) {
       time: currentTime,
     };
 
-    setCurrentChain((prev) => [...prev, node]);
+    setCurrentChain((prev) => {
+      const nextChain = [...prev, node];
+
+      if (END_ACTIONS.includes(action)) {
+        const newId = saveCompletedPossession(nextChain);
+        setJustAutoFinishedId(newId ?? null);
+        return [];
+      }
+
+      setJustAutoFinishedId(null);
+      return nextChain;
+    });
   }
 
   function undoLastAction() {
     setCurrentChain((prev) => prev.slice(0, -1));
+    setJustAutoFinishedId(null);
   }
 
   function clearCurrentChain() {
     setCurrentChain([]);
+    setJustAutoFinishedId(null);
   }
 
   function finishPossession() {
     if (!currentChain.length) return;
-
-    const newPossession: CompletedPossession = {
-      id: `pos-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      nodes: currentChain,
-      note: "",
-    };
-
-    setCompletedPossessions((prev) => [newPossession, ...prev]);
-    setSelectedPossessionId(newPossession.id);
-    setNoteDraft("");
+    saveCompletedPossession(currentChain);
     setCurrentChain([]);
+    setJustAutoFinishedId(null);
   }
 
   function selectPossession(possession: CompletedPossession) {
@@ -359,8 +299,6 @@ export default function AxisReviewEditor({ videoUrl }: Props) {
 
     downloadText("axis-possession-export.json", JSON.stringify(payload, null, 2));
   }
-
-  const isTerminalState = lastAction ? END_ACTIONS.includes(lastAction) : false;
 
   return (
     <div className="flex w-full flex-col gap-4 p-4">
@@ -464,7 +402,7 @@ export default function AxisReviewEditor({ videoUrl }: Props) {
 
               {currentChain.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
-                  Start one possession. Build it one event at a time.
+                  Start one possession. First tap starts the chain.
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -480,9 +418,9 @@ export default function AxisReviewEditor({ videoUrl }: Props) {
                 </div>
               )}
 
-              {isTerminalState && currentChain.length > 0 && (
+              {justAutoFinishedId && currentChain.length === 0 && (
                 <div className="mt-3 text-xs text-lime-300">
-                  Terminal state reached. Finish possession or undo last step.
+                  Possession auto-finished on terminal event.
                 </div>
               )}
             </div>
@@ -505,7 +443,7 @@ export default function AxisReviewEditor({ videoUrl }: Props) {
               </div>
 
               <div className="mt-3 text-xs text-neutral-500">
-                The next options depend on what just happened.
+                Terminal actions auto-save and reset the chain.
               </div>
             </div>
           </div>

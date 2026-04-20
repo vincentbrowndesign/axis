@@ -12,6 +12,11 @@ export default function ReviewPage() {
     };
   }, [videoUrl]);
 
+  function handleUpload(file: File) {
+    const url = URL.createObjectURL(file);
+    setVideoUrl(url);
+  }
+
   function clearVideo() {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
     setVideoUrl(null);
@@ -19,8 +24,9 @@ export default function ReviewPage() {
 
   return (
     <div className="min-h-screen w-full bg-black text-white">
+      {/* Header */}
       <div className="sticky top-0 z-40 border-b border-neutral-800 bg-black/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between p-4">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between p-4">
           <h1 className="text-lg font-semibold">Review</h1>
 
           {videoUrl && (
@@ -28,18 +34,23 @@ export default function ReviewPage() {
               onClick={clearVideo}
               className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-900"
             >
-              Clear Video
+              New Clip
             </button>
           )}
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-7xl">
+      {/* Body */}
+      <div className="mx-auto w-full max-w-6xl">
         {videoUrl ? (
           <AxisReviewEditor videoUrl={videoUrl} />
         ) : (
-          <div className="flex min-h-[70vh] w-full items-center justify-center p-4">
-            <label className="cursor-pointer rounded-xl bg-white px-4 py-2 text-black">
+          <div className="flex min-h-[70vh] w-full flex-col items-center justify-center gap-6 p-6 text-center">
+            <div className="text-sm text-neutral-400">
+              Upload one clip. Build possessions from it.
+            </div>
+
+            <label className="cursor-pointer rounded-xl bg-white px-5 py-3 text-black text-sm font-medium">
               Upload Video
               <input
                 type="file"
@@ -48,11 +59,14 @@ export default function ReviewPage() {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  const url = URL.createObjectURL(file);
-                  setVideoUrl(url);
+                  handleUpload(file);
                 }}
               />
             </label>
+
+            <div className="text-xs text-neutral-600">
+              Tip: shorter clips = faster tagging
+            </div>
           </div>
         )}
       </div>
