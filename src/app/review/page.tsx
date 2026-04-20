@@ -18,7 +18,7 @@ export default function ReviewPage() {
   }
 
   return (
-    <div className="flex h-screen w-full flex-col bg-black text-white">
+    <div className="min-h-screen w-full bg-black text-white">
       <div className="flex items-center justify-between border-b border-neutral-800 p-4">
         <h1 className="text-lg font-semibold">Review</h1>
 
@@ -32,11 +32,11 @@ export default function ReviewPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="w-full">
         {videoUrl ? (
           <AxisReviewEditor videoUrl={videoUrl} />
         ) : (
-          <div className="flex h-full w-full items-center justify-center">
+          <div className="flex min-h-[70vh] w-full items-center justify-center">
             <label className="cursor-pointer rounded bg-white px-4 py-2 text-black">
               Upload Video
               <input

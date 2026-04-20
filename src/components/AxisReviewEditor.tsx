@@ -26,17 +26,9 @@ export default function AxisReviewEditor({ videoUrl }: Props) {
     const video = videoRef.current;
     if (!video) return;
 
-    const onLoadedMetadata = () => {
-      setDuration(video.duration || 0);
-    };
-
-    const onTimeUpdate = () => {
-      setCurrentTime(video.currentTime || 0);
-    };
-
-    const onEnded = () => {
-      setIsPlaying(false);
-    };
+    const onLoadedMetadata = () => setDuration(video.duration || 0);
+    const onTimeUpdate = () => setCurrentTime(video.currentTime || 0);
+    const onEnded = () => setIsPlaying(false);
 
     video.addEventListener("loadedmetadata", onLoadedMetadata);
     video.addEventListener("timeupdate", onTimeUpdate);
@@ -83,62 +75,59 @@ export default function AxisReviewEditor({ videoUrl }: Props) {
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-black text-white">
-      <div className="flex-1 p-4">
-        <div className="mx-auto flex h-full w-full max-w-5xl flex-col rounded-2xl border border-neutral-800 bg-neutral-950">
-          <div className="flex-1 flex items-center justify-center p-4">
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              className="max-h-full w-full rounded-xl bg-black"
-              playsInline
-              preload="metadata"
-            />
-          </div>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4">
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          className="w-full rounded-xl bg-black"
+          playsInline
+          preload="metadata"
+          controls
+        />
+      </div>
 
-          <div className="border-t border-neutral-800 p-4">
-            <div className="mb-3 flex items-center justify-between text-sm text-neutral-400">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <div className="mb-3 flex items-center justify-between text-sm text-neutral-400">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
 
-            <input
-              type="range"
-              min={0}
-              max={duration || 0}
-              step={0.01}
-              value={currentTime}
-              onChange={(e) => handleSeek(Number(e.target.value))}
-              className="w-full"
-            />
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.01}
+          value={currentTime}
+          onChange={(e) => handleSeek(Number(e.target.value))}
+          className="w-full"
+        />
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => skipBy(-5)}
-                className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-900"
-              >
-                -5s
-              </button>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => skipBy(-5)}
+            className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-900"
+          >
+            -5s
+          </button>
 
-              <button
-                onClick={togglePlay}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black"
-              >
-                {isPlaying ? "Pause" : "Play"}
-              </button>
+          <button
+            onClick={togglePlay}
+            className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black"
+          >
+            {isPlaying ? "Pause" : "Play"}
+          </button>
 
-              <button
-                onClick={() => skipBy(5)}
-                className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-900"
-              >
-                +5s
-              </button>
-            </div>
+          <button
+            onClick={() => skipBy(5)}
+            className="rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-900"
+          >
+            +5s
+          </button>
+        </div>
 
-            <div className="mt-3 text-xs text-neutral-500">
-              Progress: {progress.toFixed(1)}%
-            </div>
-          </div>
+        <div className="mt-3 text-xs text-neutral-500">
+          Progress: {progress.toFixed(1)}%
         </div>
       </div>
     </div>
