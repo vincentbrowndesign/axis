@@ -17,6 +17,7 @@ type StepId =
   | "outcome";
 
 type EventKind = "chain" | "branch" | "outcome" | "terminal";
+type InsightTone = "good" | "neutral" | "warn";
 
 type Player = {
   id: string;
@@ -85,6 +86,18 @@ type SessionSignal = {
   turnovers: number;
 };
 
+type PossessionInsight = {
+  read: string;
+  tone: InsightTone;
+  why: string;
+  next: string;
+};
+
+type SessionInsight = {
+  pattern: string;
+  focus: string;
+};
+
 /* =============================
    DATA
 ============================= */
@@ -132,6 +145,16 @@ function badgeTone(kind: EventKind): string {
   if (kind === "outcome") return "border-white/16 bg-white/[0.07] text-white";
   if (kind === "terminal") return "border-red-400/30 bg-red-400/[0.08] text-red-100";
   return "border-white/8 bg-white/[0.04] text-white/78";
+}
+
+function hasEventLabel(events: PossessionEvent[], step: StepId | null, label: string): boolean {
+  return events.some((event) => (step ? event.step === step : true) && event.label === label);
+}
+
+function getFinalOutcome(events: PossessionEvent[]): string | null {
+  return (
+    [...events].reverse().find((event) => event.step === "outcome")?.label ?? null
+  );
 }
 
 function buildSummary(events: PossessionEvent[], players: Player[]): string {
@@ -213,6 +236,204 @@ function stepBackFromEvent(event: PossessionEvent): StepId {
   if (event.step === "receiver") return "action";
   if (event.step === "outcome") return "outcome";
   return "selectPlayer";
+}
+
+/* =============================
+   INSIGHT ENGINE
+============================= */
+
+function getPossessionInsight(possession: SavedPossession | null): PossessionInsight {
+  if (!possession) {
+    return {
+      read: "No possession selected",
+      tone: "neutral",
+      why: "Pick a possession card to see the coaching read.",
+      next: "Tag and select one possession to generate feedback.",
+    };
+  }
+
+  const events = possession.events;
+  const downhill = hasEventLabel(events, "action", "Downhill");
+  const shot = hasEventLabel(events, "action", "Shot");
+  const help = hasEventLabel(events, "defense", "Help");
+  const noHelp = hasEventLabel(events, "defense", "No Help");
+  const pass =
+    hasEventLabel(events, "action", "Pass") || hasEventLabel(events, "decision", "Pass");
+  const finish = hasEventLabel(events, "decision", "Finish");
+  const reset = hasEventLabel(events, "outcome", "Reset");
+  const outcome = getFinalOutcome(events);
+  const make = outcome === "Make";
+  const miss = outcome === "Miss";
+  const turnover = outcome === "Turnover";
+
+  if (!downhill && shot) {
+    return {
+      read: "Low advantage shot",
+      tone: "warn",
+      why: "The shot came before the defense was bent downhill.",
+      next: "Create paint pressure before settling.",
+    };
+  }
+
+  if (!downhill) {
+    return {
+      read: "No paint pressure",
+      tone: "warn",
+      why: "The possession never created downhill pressure on the defense.",
+      next: "Get downhill first so the defense has to react.",
+    };
+  }
+
+  if (help && pass) {
+    return {
+      read: "Correct",
+      tone: "good",
+      why: "Help committed, so the pass kept the advantage alive.",
+      next: "Keep forcing help before moving it.",
+    };
+  }
+
+  if (noHelp && pass) {
+    return {
+      read: "Missed scoring window",
+      tone: "warn",
+      why: "The defense stayed home, so the scoring lane was still there.",
+      next: "Finish when no help shows.",
+    };
+  }
+
+  if (noHelp && finish) {
+    return {
+      read: "Correct",
+      tone: "good",
+      why: "No help showed, so the finish was available.",
+      next: "Keep converting clean lanes into scores.",
+    };
+  }
+
+  if (help && finish && make) {
+    return {
+      read: "Tough make",
+      tone: "neutral",
+      why: "Help was there, but the finish still converted.",
+      next: "Good score. Also keep seeing the early spray pass.",
+    };
+  }
+
+  if (help && finish && (miss || turnover)) {
+    return {
+      read: "Forced finish",
+      tone: "warn",
+      why: "Help had already loaded into the lane before the finish.",
+      next: "Recognize the second defender sooner.",
+    };
+  }
+
+  if (reset) {
+    return {
+      read: "Neutral",
+      tone: "neutral",
+      why: "No clear advantage was created on the first action.",
+      next: "Reset fast and re-attack with better spacing or timing.",
+    };
+  }
+
+  if (turnover && pass) {
+    return {
+      read: "Bad execution",
+      tone: "warn",
+      why: "The read may have been right, but the pass did not get there clean.",
+      next: "Keep the idea. Tighten the delivery.",
+    };
+  }
+
+  if (turnover) {
+    return {
+      read: "Lost possession",
+      tone: "warn",
+      why: "The possession ended before the advantage turned into a shot or finish.",
+      next: "Slow the decision half a beat and simplify the next read.",
+    };
+  }
+
+  return {
+    read: "Incomplete",
+    tone: "neutral",
+    why: "This possession does not have enough signal to judge cleanly.",
+    next: "Tag downhill, defense, decision, and outcome for a stronger read.",
+  };
+}
+
+function getSessionInsight(possessions: SavedPossession[]): SessionInsight {
+  if (!possessions.length) {
+    return {
+      pattern: "No session pattern yet.",
+      focus: "Tag a few possessions to build signal.",
+    };
+  }
+
+  let noHelpPasses = 0;
+  let helpPasses = 0;
+  let forcedFinishes = 0;
+  let downhillTouches = 0;
+  let turnovers = 0;
+
+  for (const possession of possessions) {
+    const events = possession.events;
+    const downhill = hasEventLabel(events, "action", "Downhill");
+    const help = hasEventLabel(events, "defense", "Help");
+    const noHelp = hasEventLabel(events, "defense", "No Help");
+    const pass =
+      hasEventLabel(events, "action", "Pass") || hasEventLabel(events, "decision", "Pass");
+    const finish = hasEventLabel(events, "decision", "Finish");
+    const outcome = getFinalOutcome(events);
+
+    if (downhill) downhillTouches += 1;
+    if (help && pass) helpPasses += 1;
+    if (noHelp && pass) noHelpPasses += 1;
+    if (help && finish && (outcome === "Miss" || outcome === "Turnover")) forcedFinishes += 1;
+    if (outcome === "Turnover") turnovers += 1;
+  }
+
+  if (noHelpPasses >= 3) {
+    return {
+      pattern: `Passed out of ${noHelpPasses} clean scoring windows.`,
+      focus: "Score first when the defense stays home.",
+    };
+  }
+
+  if (downhillTouches <= Math.max(1, Math.floor(possessions.length * 0.3))) {
+    return {
+      pattern: "Not enough downhill pressure to bend the defense.",
+      focus: "Create paint pressure earlier in possessions.",
+    };
+  }
+
+  if (helpPasses >= 3 && noHelpPasses <= 1) {
+    return {
+      pattern: "Recognized help well and moved the ball on time.",
+      focus: "Keep collapsing the defense before passing.",
+    };
+  }
+
+  if (forcedFinishes >= 2) {
+    return {
+      pattern: `Forced ${forcedFinishes} finishes into help.`,
+      focus: "See the second defender sooner and play off the collapse.",
+    };
+  }
+
+  if (turnovers >= 2) {
+    return {
+      pattern: `Turnovers ended ${turnovers} possessions.`,
+      focus: "Slow the decision half a beat and simplify the next read.",
+    };
+  }
+
+  return {
+    pattern: "Session is still building.",
+    focus: "Stack more possessions to reveal the clearest habit.",
+  };
 }
 
 /* =============================
@@ -345,6 +566,108 @@ function PossessionMap({
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* =============================
+   INSIGHT UI
+============================= */
+
+function InsightRow({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: InsightTone;
+}) {
+  const toneClass =
+    tone === "good"
+      ? "border-lime-400/50 bg-lime-400/10 text-lime-300"
+      : tone === "warn"
+      ? "border-amber-400/40 bg-amber-400/10 text-amber-200"
+      : "border-white/10 bg-white/[0.04] text-white/80";
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-black/20 px-3 py-2">
+      <span className="text-[11px] uppercase tracking-[0.18em] text-white/45">
+        {label}
+      </span>
+      <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${toneClass}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function InsightBlock({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+        {label}
+      </p>
+      <p className="mt-1 text-sm leading-5 text-white/88">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function InsightPanel({
+  selectedPossession,
+  possessions,
+}: {
+  selectedPossession: SavedPossession | null;
+  possessions: SavedPossession[];
+}) {
+  const possessionInsight = useMemo(
+    () => getPossessionInsight(selectedPossession),
+    [selectedPossession]
+  );
+
+  const sessionInsight = useMemo(
+    () => getSessionInsight(possessions),
+    [possessions]
+  );
+
+  return (
+    <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+      <div className="mb-3">
+        <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
+          Insight
+        </p>
+        <h3 className="mt-1 text-sm font-medium text-white">
+          Coach output
+        </h3>
+      </div>
+
+      <div className="space-y-3">
+        <InsightRow
+          label="Read"
+          value={possessionInsight.read}
+          tone={possessionInsight.tone}
+        />
+        <InsightBlock label="Why" value={possessionInsight.why} />
+        <InsightBlock label="Next" value={possessionInsight.next} />
+      </div>
+
+      <div className="my-4 h-px bg-white/8" />
+
+      <div className="space-y-3">
+        <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
+          Session pattern
+        </p>
+        <InsightBlock label="Pattern" value={sessionInsight.pattern} />
+        <InsightBlock label="Focus" value={sessionInsight.focus} />
       </div>
     </div>
   );
@@ -831,7 +1154,7 @@ export default function ReviewPage() {
     URL.revokeObjectURL(url);
   }
 
-    return (
+  return (
     <main className="min-h-screen bg-black text-white">
       <input
         ref={libraryInputRef}
@@ -1137,7 +1460,7 @@ export default function ReviewPage() {
 
                             <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
                               <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">
-                                Nodes
+                                Tags
                               </div>
                               <div className="mt-1 text-sm text-white/90">
                                 {possession.nodes.length}
@@ -1146,7 +1469,7 @@ export default function ReviewPage() {
 
                             <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
                               <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">
-                                Branch
+                                Secondary action
                               </div>
                               <div className="mt-1 text-sm text-white/90">
                                 {hasBranch ? "Yes" : "No"}
@@ -1206,9 +1529,14 @@ export default function ReviewPage() {
                 </div>
               </div>
 
+              <InsightPanel
+                selectedPossession={selectedPossession}
+                possessions={savedPossessions}
+              />
+
               <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
                 <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
-                  Selected possession
+                  Coach summary
                 </p>
 
                 {selectedPossession ? (
@@ -1231,7 +1559,7 @@ export default function ReviewPage() {
                         </span>
                       </div>
                       <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
-                        Nodes: <span className="text-white">{selectedPossession.nodes.length}</span>
+                        Tags: <span className="text-white">{selectedPossession.nodes.length}</span>
                       </div>
                       <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                         Links: <span className="text-white">{selectedPossession.edges.length}</span>
@@ -1241,10 +1569,10 @@ export default function ReviewPage() {
                     <div className="rounded-2xl border border-white/8 bg-black/30 p-3">
                       <div className="mb-3 flex items-center justify-between">
                         <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
-                          Decision map
+                          Read path
                         </p>
                         <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
-                          Vertical branch view
+                          Possession chain
                         </p>
                       </div>
 
