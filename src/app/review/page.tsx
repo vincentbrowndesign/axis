@@ -57,10 +57,32 @@ type SavedPossession = {
   endSec: number;
 };
 
+type OptionTone = "primary" | "normal" | "danger";
+
 type Option = {
   label: string;
   value: string;
-  tone?: "primary" | "normal" | "danger";
+  tone?: OptionTone;
+};
+
+type PlayerColumn = {
+  playerId: string;
+  playerName: string;
+  events: PossessionEvent[];
+};
+
+type SessionSignal = {
+  possessions: number;
+  downhill: number;
+  shots: number;
+  help: number;
+  noHelp: number;
+  passes: number;
+  finishes: number;
+  makes: number;
+  misses: number;
+  fouls: number;
+  turnovers: number;
 };
 
 /* =============================
@@ -90,54 +112,27 @@ function formatTime(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-/* =============================
-   STYLES
-============================= */
+function getPlayerName(playerId?: string): string {
+  if (!playerId) return "Unknown";
+  return PLAYERS.find((p: Player) => p.id === playerId)?.name ?? playerId;
+}
 
-function buttonTone(tone?: Option["tone"]): string {
+function buttonTone(tone?: OptionTone): string {
   if (tone === "primary") {
     return "border-lime-400/40 bg-lime-400/[0.12] text-lime-100 hover:bg-lime-400/[0.18]";
   }
   if (tone === "danger") {
     return "border-red-400/40 bg-red-400/[0.08] text-red-100 hover:bg-red-400/[0.14]";
   }
-  return "border-white/10 bg-black text-white/90 hover:bg-white/[0.04]";
+  return "border-white/8 bg-white/[0.03] text-white/90 hover:bg-white/[0.06] hover:border-white/16";
 }
 
 function badgeTone(kind: EventKind): string {
   if (kind === "branch") return "border-lime-400/30 bg-lime-400/[0.08] text-lime-100";
-  if (kind === "outcome") return "border-white/20 bg-white/[0.08] text-white";
+  if (kind === "outcome") return "border-white/16 bg-white/[0.07] text-white";
   if (kind === "terminal") return "border-red-400/30 bg-red-400/[0.08] text-red-100";
-  return "border-white/10 bg-white/[0.05] text-white/80";
+  return "border-white/8 bg-white/[0.04] text-white/78";
 }
-
-type MapNode = {
-  id: string;
-  label: string;
-  x: number;
-  y: number;
-  kind: EventKind;
-  timeSec: number;
-};
-
-type MapEdge = {
-  id: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-};
-
-type LayoutResult = {
-  nodes: MapNode[];
-  edges: MapEdge[];
-  width: number;
-  height: number;
-};
-
-/* =============================
-   HELPERS
-============================= */
 
 function buildSummary(events: PossessionEvent[], players: Player[]): string {
   const byId = new Map<string, string>(players.map((p: Player) => [p.id, p.name]));
@@ -173,19 +168,7 @@ function buildSummary(events: PossessionEvent[], players: Player[]): string {
   }.`;
 }
 
-function countSessionSignal(possessions: SavedPossession[]): {
-  possessions: number;
-  downhill: number;
-  shots: number;
-  help: number;
-  noHelp: number;
-  passes: number;
-  finishes: number;
-  makes: number;
-  misses: number;
-  fouls: number;
-  turnovers: number;
-} {
+function countSessionSignal(possessions: SavedPossession[]): SessionSignal {
   const flat: PossessionEvent[] = possessions.flatMap(
     (possession: SavedPossession) => possession.events
   );
@@ -233,110 +216,84 @@ function stepBackFromEvent(event: PossessionEvent): StepId {
 }
 
 /* =============================
-   GRAPH ENGINE
+   MAP V3
 ============================= */
 
-function layoutGraph(possession: SavedPossession): LayoutResult {
-  const children = new Map<string, string[]>();
+function buildPlayerColumns(possession: SavedPossession): PlayerColumn[] {
+  const columns: PlayerColumn[] = [];
+  const byPlayer = new Map<string, PlayerColumn>();
 
-  possession.edges.forEach((edge: PossessionEdge) => {
-    const list = children.get(edge.from) ?? [];
-    list.push(edge.to);
-    children.set(edge.from, list);
-  });
+  possession.events.forEach((event: PossessionEvent) => {
+    let ownerId: string | undefined = event.playerId;
 
-  const incoming = new Set<string>(
-    possession.edges.map((edge: PossessionEdge) => edge.to)
-  );
-
-  const root: PossessionNode | undefined =
-    possession.nodes.find((node: PossessionNode) => !incoming.has(node.id)) ??
-    possession.nodes[0];
-
-  const positions = new Map<string, { x: number; y: number }>();
-  let row = 0;
-
-  function walk(id: string, depth: number): { x: number; y: number } {
-    const kids: string[] = children.get(id) ?? [];
-
-    if (kids.length === 0) {
-      const pos = {
-        x: depth * 180 + 80,
-        y: row * 110 + 60,
-      };
-      positions.set(id, pos);
-      row += 1;
-      return pos;
+    if (event.step === "receiver" && event.nextPlayerId) {
+      ownerId = event.nextPlayerId;
     }
 
-    const childPositions: { x: number; y: number }[] = kids.map((kidId: string) =>
-      walk(kidId, depth + 1)
-    );
+    if (!ownerId) {
+      ownerId = possession.events.find((e: PossessionEvent) => e.playerId)?.playerId ?? "unknown";
+    }
 
-    const avgY =
-      childPositions.reduce(
-        (sum: number, pos: { x: number; y: number }) => sum + pos.y,
-        0
-      ) / childPositions.length;
+    if (!byPlayer.has(ownerId)) {
+      const col: PlayerColumn = {
+        playerId: ownerId,
+        playerName: getPlayerName(ownerId),
+        events: [],
+      };
+      byPlayer.set(ownerId, col);
+      columns.push(col);
+    }
 
-    const pos = {
-      x: depth * 180 + 80,
-      y: avgY,
-    };
-
-    positions.set(id, pos);
-    return pos;
-  }
-
-  if (root) {
-    walk(root.id, 0);
-  }
-
-  const nodes: MapNode[] = possession.nodes.map((node: PossessionNode) => {
-    const pos = positions.get(node.id) ?? { x: 80, y: 60 };
-    return {
-      id: node.id,
-      label: node.label,
-      x: pos.x,
-      y: pos.y,
-      kind: node.kind,
-      timeSec: node.timeSec,
-    };
+    const target = byPlayer.get(ownerId);
+    if (target) {
+      target.events.push(event);
+    }
   });
 
-  const edges: MapEdge[] = possession.edges
-    .map((edge: PossessionEdge): MapEdge | null => {
-      const from = positions.get(edge.from);
-      const to = positions.get(edge.to);
-
-      if (!from || !to) return null;
-
-      return {
-        id: edge.id,
-        x1: from.x + 50,
-        y1: from.y,
-        x2: to.x - 50,
-        y2: to.y,
-      };
-    })
-    .filter((edge: MapEdge | null): edge is MapEdge => edge !== null);
-
-  const width =
-    nodes.length > 0 ? Math.max(...nodes.map((node: MapNode) => node.x)) + 140 : 800;
-  const height =
-    nodes.length > 0 ? Math.max(...nodes.map((node: MapNode) => node.y)) + 90 : 240;
-
-  return {
-    nodes,
-    edges,
-    width: Math.max(width, 800),
-    height: Math.max(height, 240),
-  };
+  return columns;
 }
 
-/* =============================
-   MAP VIEW
-============================= */
+function MapNodeCard({
+  label,
+  timeSec,
+  kind,
+  onClick,
+}: {
+  label: string;
+  timeSec: number;
+  kind: EventKind;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`min-w-[116px] rounded-xl border px-3 py-2 text-xs transition ${badgeTone(
+        kind
+      )} hover:border-white/20`}
+    >
+      <div>{label}</div>
+      <div className="mt-1 text-[10px] text-white/45">{formatTime(timeSec)}</div>
+    </button>
+  );
+}
+
+function PassConnector({
+  toPlayer,
+}: {
+  toPlayer: string;
+}) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-2 text-[11px] text-lime-300/80">
+      <span className="rounded-full border border-lime-400/30 bg-lime-400/[0.08] px-2 py-0.5">
+        Pass
+      </span>
+      <span className="text-white/30">→</span>
+      <span className="rounded-full border border-white/8 bg-white/[0.04] px-2 py-0.5 text-white/70">
+        {toPlayer}
+      </span>
+    </div>
+  );
+}
 
 function PossessionMap({
   possession,
@@ -345,81 +302,50 @@ function PossessionMap({
   possession: SavedPossession;
   onSeek: (sec: number) => void;
 }) {
-  const graph = useMemo<LayoutResult>(() => layoutGraph(possession), [possession]);
+  const columns = useMemo<PlayerColumn[]>(() => buildPlayerColumns(possession), [possession]);
 
   return (
-    <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
-      <svg
-        width={graph.width}
-        height={graph.height}
-        viewBox={`0 0 ${graph.width} ${graph.height}`}
-        className="block"
-      >
-        {graph.edges.map((edge: MapEdge) => (
-          <path
-            key={edge.id}
-            d={`M ${edge.x1} ${edge.y1} C ${edge.x1 + 40} ${edge.y1}, ${edge.x2 - 40} ${edge.y2}, ${edge.x2} ${edge.y2}`}
-            fill="none"
-            stroke="rgba(255,255,255,0.15)"
-            strokeWidth="2"
-          />
-        ))}
+    <div className="rounded-2xl border border-white/8 bg-black/30 p-4">
+      <div className="flex flex-wrap items-start gap-6">
+        {columns.map((column: PlayerColumn, columnIndex: number) => (
+          <div key={column.playerId} className="flex min-w-[148px] flex-col items-center">
+            <div className="mb-3 rounded-full border border-white/8 bg-white/[0.04] px-3 py-1 text-xs text-white/70">
+              {column.playerName}
+            </div>
 
-        {graph.nodes.map((node: MapNode) => (
-          <g
-            key={node.id}
-            transform={`translate(${node.x}, ${node.y})`}
-            style={{ cursor: "pointer" }}
-            onClick={() => onSeek(node.timeSec)}
-          >
-            <rect
-              x={-56}
-              y={-24}
-              rx={14}
-              ry={14}
-              width={112}
-              height={48}
-              fill={
-                node.kind === "branch"
-                  ? "rgba(163,230,53,0.12)"
-                  : node.kind === "outcome"
-                  ? "rgba(255,255,255,0.1)"
-                  : node.kind === "terminal"
-                  ? "rgba(248,113,113,0.12)"
-                  : "rgba(255,255,255,0.06)"
-              }
-              stroke={
-                node.kind === "branch"
-                  ? "rgba(163,230,53,0.35)"
-                  : node.kind === "outcome"
-                  ? "rgba(255,255,255,0.22)"
-                  : node.kind === "terminal"
-                  ? "rgba(248,113,113,0.35)"
-                  : "rgba(255,255,255,0.14)"
-              }
-            />
-            <text
-              x="0"
-              y="-2"
-              textAnchor="middle"
-              fontSize="12"
-              fill="white"
-              style={{ fontWeight: 500 }}
-            >
-              {node.label}
-            </text>
-            <text
-              x="0"
-              y="14"
-              textAnchor="middle"
-              fontSize="10"
-              fill="rgba(255,255,255,0.45)"
-            >
-              {formatTime(node.timeSec)}
-            </text>
-          </g>
+            <div className="flex flex-col items-center">
+              {column.events.map((event: PossessionEvent, eventIndex: number) => {
+                const isReceiver = event.step === "receiver" && Boolean(event.nextPlayerId);
+                const label =
+                  isReceiver && event.nextPlayerId
+                    ? getPlayerName(event.nextPlayerId)
+                    : event.label;
+
+                return (
+                  <div key={event.id} className="flex flex-col items-center">
+                    <MapNodeCard
+                      label={label}
+                      timeSec={event.timeSec}
+                      kind={event.kind}
+                      onClick={() => onSeek(event.timeSec)}
+                    />
+
+                    {eventIndex !== column.events.length - 1 && (
+                      <div className="h-6 w-px bg-white/12" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {columnIndex !== columns.length - 1 && (
+              <div className="mt-4 w-full">
+                <PassConnector toPlayer={columns[columnIndex + 1]?.playerName ?? "Next Player"} />
+              </div>
+            )}
+          </div>
         ))}
-      </svg>
+      </div>
     </div>
   );
 }
@@ -474,7 +400,7 @@ export default function ReviewPage() {
     return savedPossessions.find((p: SavedPossession) => p.id === selectedPossessionId) ?? null;
   }, [savedPossessions, selectedPossessionId]);
 
-  const signal = useMemo(() => countSessionSignal(savedPossessions), [savedPossessions]);
+  const signal = useMemo<SessionSignal>(() => countSessionSignal(savedPossessions), [savedPossessions]);
 
   const currentPlayerName = useMemo<string>(() => {
     return PLAYERS.find((p: Player) => p.id === currentPlayerId)?.name ?? "No player";
@@ -486,12 +412,10 @@ export default function ReviewPage() {
     return events
       .map((event: PossessionEvent) => {
         if (event.step === "selectPlayer" && event.playerId) {
-          return PLAYERS.find((p: Player) => p.id === event.playerId)?.name ?? "Player";
+          return getPlayerName(event.playerId);
         }
         if (event.step === "receiver" && event.nextPlayerId) {
-          const name =
-            PLAYERS.find((p: Player) => p.id === event.nextPlayerId)?.name ?? "Receiver";
-          return `Pass → ${name}`;
+          return `Pass → ${getPlayerName(event.nextPlayerId)}`;
         }
         return event.label;
       })
@@ -547,12 +471,11 @@ export default function ReviewPage() {
         ];
       case "location":
         return [
-          { label: "Left Slot", value: "Left Slot" },
+          { label: "Left Corner", value: "Left Corner" },
+          { label: "Left Wing", value: "Left Wing" },
           { label: "Middle", value: "Middle", tone: "primary" },
-          { label: "Right Slot", value: "Right Slot" },
-          { label: "Baseline", value: "Baseline" },
-          { label: "Nail", value: "Nail" },
-          { label: "Paint Touch", value: "Paint Touch" },
+          { label: "Right Wing", value: "Right Wing" },
+          { label: "Right Corner", value: "Right Corner" },
         ];
       case "defense":
         return [
@@ -853,7 +776,7 @@ export default function ReviewPage() {
       let nodePlayerId = event.playerId;
 
       if (event.step === "receiver" && event.nextPlayerId) {
-        label = PLAYERS.find((p: Player) => p.id === event.nextPlayerId)?.name ?? label;
+        label = getPlayerName(event.nextPlayerId);
         nodePlayerId = event.nextPlayerId;
         rebuiltPlayerId = event.nextPlayerId;
       } else if (event.step === "selectPlayer" && event.playerId) {
@@ -903,7 +826,7 @@ export default function ReviewPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "axis-capture-v2.json";
+    a.download = "axis-capture-v3-clean.json";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -927,36 +850,36 @@ export default function ReviewPage() {
         onChange={(e) => handleUpload(e.target.files?.[0] ?? null)}
       />
 
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 md:px-6">
-        <header className="flex items-center justify-between border-b border-white/10 pb-3">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-4 md:px-6 md:py-5">
+        <header className="flex items-center justify-between border-b border-white/8 pb-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-white/35">Axis</p>
-            <h1 className="text-lg font-semibold tracking-tight">Capture V2</h1>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">Axis</p>
+            <h1 className="text-lg font-semibold tracking-tight">Capture V3</h1>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={openCameraPicker}
-              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/85 transition hover:border-white/25"
+              className="rounded-xl border border-white/10 px-3 py-2 text-sm text-white/85 transition hover:border-white/20"
             >
               Record
             </button>
             <button
               onClick={openLibraryPicker}
-              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/85 transition hover:border-white/25"
+              className="rounded-xl border border-white/10 px-3 py-2 text-sm text-white/85 transition hover:border-white/20"
             >
               Library
             </button>
             <button
               onClick={exportSession}
               disabled={!savedPossessions.length}
-              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/85 transition hover:border-white/25 disabled:opacity-40"
+              className="rounded-xl border border-white/10 px-3 py-2 text-sm text-white/85 transition hover:border-white/20 disabled:opacity-40"
             >
               Export
             </button>
             <button
               onClick={resetAll}
-              className="rounded-xl border border-white/12 px-3 py-2 text-sm text-white/85 transition hover:border-white/25"
+              className="rounded-xl border border-white/10 px-3 py-2 text-sm text-white/85 transition hover:border-white/20"
             >
               Reset
             </button>
@@ -964,14 +887,14 @@ export default function ReviewPage() {
         </header>
 
         {!videoUrl ? (
-          <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center">
+          <section className="rounded-3xl border border-white/8 bg-white/[0.03] p-8 text-center">
             <p className="text-xs uppercase tracking-[0.28em] text-lime-400">Capture</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-5xl">
               Map the possession.
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-white/60">
               Open the camera or pick from library. Then map the possession as player, trigger,
-              action, floor location, defense, transfer, and outcome.
+              action, location, defense, transfer, and outcome.
             </p>
 
             <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -983,28 +906,28 @@ export default function ReviewPage() {
               </button>
               <button
                 onClick={openLibraryPicker}
-                className="rounded-2xl border border-white/12 px-6 py-4 text-base font-medium text-white transition hover:border-white/25"
+                className="rounded-2xl border border-white/10 px-6 py-4 text-base font-medium text-white transition hover:border-white/20"
               >
                 Choose From Library
               </button>
             </div>
           </section>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_390px]">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_360px]">
             <section className="min-w-0">
-              <div className="sticky top-0 z-20 overflow-hidden rounded-2xl border border-white/10 bg-[#050505]">
-                <div className="relative bg-black">
+              <div className="overflow-hidden rounded-3xl border border-white/8 bg-white/[0.03]">
+                <div className="bg-black">
                   <video
                     ref={videoRef}
                     src={videoUrl}
                     controls={false}
                     playsInline
-                    className="h-[220px] w-full bg-black object-contain md:h-[280px]"
+                    className="h-[240px] w-full bg-black object-contain md:h-[320px]"
                   />
                 </div>
 
-                <div className="border-t border-white/10 px-3 py-3">
-                  <div className="mb-2 flex items-center justify-between text-xs text-white/55">
+                <div className="space-y-4 border-t border-white/8 px-4 py-4">
+                  <div className="flex items-center justify-between text-xs text-white/50">
                     <span>{formatTime(currentSec)}</span>
                     <span>{formatTime(durationSec)}</span>
                   </div>
@@ -1016,104 +939,107 @@ export default function ReviewPage() {
                     step={0.01}
                     value={currentSec}
                     onChange={(e) => seekTo(Number(e.target.value))}
-                    className="mb-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10"
+                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10"
                   />
 
-                  <div className="mb-3 h-1.5 w-full rounded-full bg-white/5">
+                  <div className="h-1.5 w-full rounded-full bg-white/5">
                     <div
                       className="h-1.5 rounded-full bg-white"
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
 
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={playPause}
-                      className="rounded-xl border border-white/12 px-3 py-2 text-sm transition hover:border-white/25"
+                      className="rounded-xl border border-white/10 px-3 py-2 text-sm transition hover:border-white/20"
                     >
                       {isPlaying ? "Pause" : "Play"}
                     </button>
                     <button
                       onClick={() => seekTo(currentSec - 2)}
-                      className="rounded-xl border border-white/12 px-3 py-2 text-sm transition hover:border-white/25"
+                      className="rounded-xl border border-white/10 px-3 py-2 text-sm transition hover:border-white/20"
                     >
                       -2s
                     </button>
                     <button
                       onClick={() => seekTo(currentSec + 2)}
-                      className="rounded-xl border border-white/12 px-3 py-2 text-sm transition hover:border-white/25"
+                      className="rounded-xl border border-white/10 px-3 py-2 text-sm transition hover:border-white/20"
                     >
                       +2s
                     </button>
                     <button
                       onClick={undoLast}
                       disabled={!events.length}
-                      className="rounded-xl border border-white/12 px-3 py-2 text-sm transition hover:border-white/25 disabled:opacity-40"
+                      className="rounded-xl border border-white/10 px-3 py-2 text-sm transition hover:border-white/20 disabled:opacity-40"
                     >
                       Undo
                     </button>
                     <button
                       onClick={() => finishPossession()}
                       disabled={!events.length}
-                      className="rounded-xl border border-white/12 px-3 py-2 text-sm transition hover:border-white/25 disabled:opacity-40"
+                      className="rounded-xl border border-white/10 px-3 py-2 text-sm transition hover:border-white/20 disabled:opacity-40"
                     >
                       Finish
                     </button>
 
-                    <div className="ml-auto text-xs uppercase tracking-[0.22em] text-white/35">
+                    <div className="ml-auto text-[10px] uppercase tracking-[0.22em] text-white/35">
                       {videoName}
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <div className="mb-3 flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+              <div className="mt-5 rounded-3xl border border-white/8 bg-white/[0.03] p-4 md:p-5">
+                <div className="grid gap-4 md:grid-cols-[1fr_240px]">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
                       Current possession
                     </p>
-                    <div className="mt-2 flex min-h-[56px] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white/88">
+
+                    <div className="mt-3 min-h-[58px] rounded-2xl border border-white/8 bg-black/30 px-3 py-3">
                       {events.length ? (
-                        events.map((event: PossessionEvent) => (
-                          <span
-                            key={event.id}
-                            className={`rounded-full border px-2.5 py-1 ${badgeTone(event.kind)}`}
-                          >
-                            {event.step === "receiver" && event.nextPlayerId
-                              ? `Pass → ${
-                                  PLAYERS.find((p: Player) => p.id === event.nextPlayerId)?.name ??
-                                  event.label
-                                }`
-                              : event.label}
-                          </span>
-                        ))
+                        <div className="flex flex-wrap gap-2">
+                          {events.map((event: PossessionEvent) => (
+                            <span
+                              key={event.id}
+                              className={`rounded-full border px-2.5 py-1 text-xs ${badgeTone(
+                                event.kind
+                              )}`}
+                            >
+                              {event.step === "receiver" && event.nextPlayerId
+                                ? `Pass → ${getPlayerName(event.nextPlayerId)}`
+                                : event.label}
+                            </span>
+                          ))}
+                        </div>
                       ) : (
-                        <span className="text-white/45">{currentFlowText}</span>
+                        <span className="text-sm text-white/45">{currentFlowText}</span>
                       )}
                     </div>
                   </div>
 
-                  <div className="w-full max-w-[240px] rounded-2xl border border-white/10 bg-black/40 px-3 py-3">
-                    <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
+                  <div className="rounded-2xl border border-white/8 bg-black/30 px-3 py-3">
+                    <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
                       Active player
                     </p>
                     <p className="mt-1 text-sm text-white/90">{currentPlayerName}</p>
-                    <p className="mt-3 text-[10px] uppercase tracking-[0.22em] text-white/35">
+
+                    <p className="mt-4 text-[10px] uppercase tracking-[0.24em] text-white/35">
                       Prompt
                     </p>
                     <p className="mt-1 text-sm text-white/80">{smartPrompt}</p>
                   </div>
                 </div>
 
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+                <div className="mt-5 flex items-center justify-between">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
                     What happened next
                   </p>
-                  <p className="text-xs text-white/35">{step}</p>
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">{step}</p>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {options.map((option: Option) => (
                     <button
                       key={option.value}
@@ -1131,12 +1057,14 @@ export default function ReviewPage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="mt-5 rounded-3xl border border-white/8 bg-white/[0.03] p-4 md:p-5">
                 <div className="mb-3 flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
                     Possession cards
                   </p>
-                  <p className="text-xs text-white/35">{savedPossessions.length} saved</p>
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
+                    {savedPossessions.length} saved
+                  </p>
                 </div>
 
                 {savedPossessions.length ? (
@@ -1158,21 +1086,21 @@ export default function ReviewPage() {
                             setSelectedPossessionId(possession.id);
                             seekTo(possession.startSec);
                           }}
-                          className={`rounded-2xl border p-4 text-left transition hover:border-white/25 ${
+                          className={`rounded-2xl border p-4 text-left transition hover:border-white/18 ${
                             selectedPossessionId === possession.id
-                              ? "border-lime-400/50 bg-lime-400/[0.08]"
-                              : "border-white/10 bg-black/30"
+                              ? "border-lime-400/40 bg-lime-400/[0.08]"
+                              : "border-white/8 bg-black/30"
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+                              <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
                                 Possession {savedPossessions.length - index}
                               </p>
                               <p className="mt-2 text-sm text-white/88">{possession.summary}</p>
                             </div>
 
-                            <div className="text-right text-xs text-white/35">
+                            <div className="text-right text-[11px] text-white/35">
                               <div>{formatTime(possession.startSec)}</div>
                               <div className="mt-1">{formatTime(possession.endSec)}</div>
                             </div>
@@ -1187,30 +1115,27 @@ export default function ReviewPage() {
                                 )}`}
                               >
                                 {event.step === "receiver" && event.nextPlayerId
-                                  ? `Pass → ${
-                                      PLAYERS.find((p: Player) => p.id === event.nextPlayerId)
-                                        ?.name ?? event.label
-                                    }`
+                                  ? `Pass → ${getPlayerName(event.nextPlayerId)}`
                                   : event.label}
                               </span>
                             ))}
 
                             {possession.events.length > 8 ? (
-                              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/45">
+                              <span className="rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-1 text-xs text-white/45">
                                 +{possession.events.length - 8} more
                               </span>
                             ) : null}
                           </div>
 
                           <div className="mt-3 grid grid-cols-3 gap-2">
-                            <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
                               <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">
                                 Outcome
                               </div>
                               <div className="mt-1 text-sm text-white/90">{finalOutcome}</div>
                             </div>
 
-                            <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
                               <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">
                                 Nodes
                               </div>
@@ -1219,7 +1144,7 @@ export default function ReviewPage() {
                               </div>
                             </div>
 
-                            <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                            <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
                               <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">
                                 Branch
                               </div>
@@ -1238,95 +1163,95 @@ export default function ReviewPage() {
               </div>
             </section>
 
-            <aside className="min-w-0">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+            <aside className="min-w-0 space-y-5">
+              <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
                   Session signal
                 </p>
 
                 <div className="mt-3 grid gap-2">
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Possessions: <span className="text-white">{signal.possessions}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Downhill: <span className="text-white">{signal.downhill}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Shots: <span className="text-white">{signal.shots}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Help: <span className="text-white">{signal.help}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     No Help: <span className="text-white">{signal.noHelp}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Passes: <span className="text-white">{signal.passes}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Finishes: <span className="text-white">{signal.finishes}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Makes: <span className="text-white">{signal.makes}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Misses: <span className="text-white">{signal.misses}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Fouls: <span className="text-white">{signal.fouls}</span>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                  <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                     Turnovers: <span className="text-white">{signal.turnovers}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+              <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
                   Selected possession
                 </p>
 
                 {selectedPossession ? (
                   <div className="mt-3 space-y-3">
-                    <div className="rounded-2xl border border-white/10 bg-black/30 p-3 text-sm text-white/85">
+                    <div className="rounded-2xl border border-white/8 bg-black/30 p-3 text-sm text-white/85">
                       {selectedPossession.summary}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                      <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                         Start:{" "}
                         <span className="text-white">
                           {formatTime(selectedPossession.startSec)}
                         </span>
                       </div>
-                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                      <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                         End:{" "}
                         <span className="text-white">
                           {formatTime(selectedPossession.endSec)}
                         </span>
                       </div>
-                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                      <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                         Nodes: <span className="text-white">{selectedPossession.nodes.length}</span>
                       </div>
-                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80">
+                      <div className="rounded-xl border border-white/8 bg-black/30 px-3 py-2 text-sm text-white/78">
                         Links: <span className="text-white">{selectedPossession.edges.length}</span>
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                    <div className="rounded-2xl border border-white/8 bg-black/30 p-3">
                       <div className="mb-3 flex items-center justify-between">
                         <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
                           Decision map
                         </p>
                         <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
-                          Tap node to jump
+                          Vertical branch view
                         </p>
                       </div>
 
                       <PossessionMap possession={selectedPossession} onSeek={seekTo} />
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                    <div className="rounded-2xl border border-white/8 bg-black/30 p-3">
                       <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">
                         Decision path
                       </p>
@@ -1336,15 +1261,12 @@ export default function ReviewPage() {
                           <button
                             key={event.id}
                             onClick={() => seekTo(event.timeSec)}
-                            className={`rounded-full border px-2.5 py-1 text-xs transition hover:border-white/25 ${badgeTone(
+                            className={`rounded-full border px-2.5 py-1 text-xs transition hover:border-white/20 ${badgeTone(
                               event.kind
                             )}`}
                           >
                             {event.step === "receiver" && event.nextPlayerId
-                              ? `Pass → ${
-                                  PLAYERS.find((p: Player) => p.id === event.nextPlayerId)?.name ??
-                                  event.label
-                                }`
+                              ? `Pass → ${getPlayerName(event.nextPlayerId)}`
                               : event.label}
                           </button>
                         ))}
@@ -1352,21 +1274,8 @@ export default function ReviewPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-3 text-sm text-white/35">
-                    Pick a possession card to inspect the map.
-                  </div>
+                  <div className="text-sm text-white/35">Pick a possession card to inspect the map.</div>
                 )}
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                  System state
-                </p>
-
-                <div className="mt-3 space-y-3 text-sm leading-6 text-white/78">
-                  <p>Player first. Downhill forces location. Pass transfers the next decision.</p>
-                  <p>Cards hold the possession. The side panel reads the structure.</p>
-                </div>
               </div>
             </aside>
           </div>
