@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import DotField from "@/components/DotField";
+import MiniCourt from "@/components/MiniCourt";
 
 /* =============================
    TYPES
@@ -98,6 +100,21 @@ type SessionInsight = {
   focus: string;
 };
 
+type IdentityInsight = {
+  label: string;
+  detail: string;
+};
+
+type LaneLabel =
+  | "Left Corner"
+  | "Left Wing"
+  | "Middle"
+  | "Right Wing"
+  | "Right Corner";
+
+type HelpLabel = "Help" | "No Help";
+type DecisionLabel = "Finish" | "Pass" | "Reset" | "Shot";
+
 /* =============================
    DATA
 ============================= */
@@ -151,10 +168,12 @@ function hasEventLabel(events: PossessionEvent[], step: StepId | null, label: st
   return events.some((event) => (step ? event.step === step : true) && event.label === label);
 }
 
+function getFirstLabel(events: PossessionEvent[], step: StepId): string | null {
+  return events.find((event) => event.step === step)?.label ?? null;
+}
+
 function getFinalOutcome(events: PossessionEvent[]): string | null {
-  return (
-    [...events].reverse().find((event) => event.step === "outcome")?.label ?? null
-  );
+  return [...events].reverse().find((event) => event.step === "outcome")?.label ?? null;
 }
 
 function buildSummary(events: PossessionEvent[], players: Player[]): string {
@@ -238,6 +257,54 @@ function stepBackFromEvent(event: PossessionEvent): StepId {
   return "selectPlayer";
 }
 
+function getDotTone(possession: SavedPossession): "good" | "neutral" | "warn" {
+  const events = possession.events;
+  const downhill = hasEventLabel(events, "action", "Downhill");
+  const help = hasEventLabel(events, "defense", "Help");
+  const noHelp = hasEventLabel(events, "defense", "No Help");
+  const pass =
+    hasEventLabel(events, "action", "Pass") || hasEventLabel(events, "decision", "Pass");
+  const finish = hasEventLabel(events, "decision", "Finish");
+  const outcome = getFinalOutcome(events);
+
+  if (!downhill) return "warn";
+  if (help && pass) return "good";
+  if (noHelp && pass) return "warn";
+  if (noHelp && finish) return "good";
+  if (help && finish && outcome !== "Make") return "warn";
+
+  return "neutral";
+}
+
+function getPossessionLane(possession: SavedPossession): LaneLabel | null {
+  const label = getFirstLabel(possession.events, "location");
+  if (
+    label === "Left Corner" ||
+    label === "Left Wing" ||
+    label === "Middle" ||
+    label === "Right Wing" ||
+    label === "Right Corner"
+  ) {
+    return label;
+  }
+  return null;
+}
+
+function getPossessionHelp(possession: SavedPossession): HelpLabel | null {
+  const label = getFirstLabel(possession.events, "defense");
+  if (label === "Help" || label === "No Help") return label;
+  return null;
+}
+
+function getPossessionDecision(possession: SavedPossession): DecisionLabel | null {
+  const decision = getFirstLabel(possession.events, "decision");
+  const action = getFirstLabel(possession.events, "action");
+
+  if (decision === "Finish" || decision === "Pass" || decision === "Reset") return decision;
+  if (action === "Shot") return "Shot";
+  return null;
+}
+
 /* =============================
    INSIGHT ENGINE
 ============================= */
@@ -270,8 +337,8 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
     return {
       read: "Low advantage shot",
       tone: "warn",
-      why: "The shot came before the defense was bent downhill.",
-      next: "Create paint pressure before settling.",
+      why: "Shot came before the defense was bent.",
+      next: "Touch paint first.",
     };
   }
 
@@ -279,8 +346,8 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
     return {
       read: "No paint pressure",
       tone: "warn",
-      why: "The possession never created downhill pressure on the defense.",
-      next: "Get downhill first so the defense has to react.",
+      why: "The possession never got downhill.",
+      next: "Create pressure first.",
     };
   }
 
@@ -288,8 +355,8 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
     return {
       read: "Correct",
       tone: "good",
-      why: "Help committed, so the pass kept the advantage alive.",
-      next: "Keep forcing help before moving it.",
+      why: "Help committed, so pass was right.",
+      next: "Keep forcing rotations.",
     };
   }
 
@@ -297,7 +364,7 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
     return {
       read: "Missed scoring window",
       tone: "warn",
-      why: "The defense stayed home, so the scoring lane was still there.",
+      why: "The defense stayed home, so the scoring lane was there.",
       next: "Finish when no help shows.",
     };
   }
@@ -306,8 +373,8 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
     return {
       read: "Correct",
       tone: "good",
-      why: "No help showed, so the finish was available.",
-      next: "Keep converting clean lanes into scores.",
+      why: "No help showed, so finish was there.",
+      next: "Score clean lanes.",
     };
   }
 
@@ -316,7 +383,7 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
       read: "Tough make",
       tone: "neutral",
       why: "Help was there, but the finish still converted.",
-      next: "Good score. Also keep seeing the early spray pass.",
+      next: "Good score. See spray sooner too.",
     };
   }
 
@@ -324,8 +391,8 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
     return {
       read: "Forced finish",
       tone: "warn",
-      why: "Help had already loaded into the lane before the finish.",
-      next: "Recognize the second defender sooner.",
+      why: "Help loaded before the finish.",
+      next: "Recognize second defender sooner.",
     };
   }
 
@@ -333,8 +400,8 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
     return {
       read: "Neutral",
       tone: "neutral",
-      why: "No clear advantage was created on the first action.",
-      next: "Reset fast and re-attack with better spacing or timing.",
+      why: "No clean edge got created.",
+      next: "Reset fast and re-attack.",
     };
   }
 
@@ -342,8 +409,8 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
     return {
       read: "Bad execution",
       tone: "warn",
-      why: "The read may have been right, but the pass did not get there clean.",
-      next: "Keep the idea. Tighten the delivery.",
+      why: "The idea may have been right, but the pass missed.",
+      next: "Keep the read. Tighten the delivery.",
     };
   }
 
@@ -351,16 +418,16 @@ function getPossessionInsight(possession: SavedPossession | null): PossessionIns
     return {
       read: "Lost possession",
       tone: "warn",
-      why: "The possession ended before the advantage turned into a shot or finish.",
-      next: "Slow the decision half a beat and simplify the next read.",
+      why: "The possession ended before advantage turned into a score.",
+      next: "Simplify the next read.",
     };
   }
 
   return {
     read: "Incomplete",
     tone: "neutral",
-    why: "This possession does not have enough signal to judge cleanly.",
-    next: "Tag downhill, defense, decision, and outcome for a stronger read.",
+    why: "Not enough signal yet.",
+    next: "Tag downhill, help, decision, outcome.",
   };
 }
 
@@ -397,42 +464,96 @@ function getSessionInsight(possessions: SavedPossession[]): SessionInsight {
 
   if (noHelpPasses >= 3) {
     return {
-      pattern: `Passed out of ${noHelpPasses} clean scoring windows.`,
-      focus: "Score first when the defense stays home.",
+      pattern: `Passed out of ${noHelpPasses} clean windows.`,
+      focus: "Score first when defense stays home.",
     };
   }
 
   if (downhillTouches <= Math.max(1, Math.floor(possessions.length * 0.3))) {
     return {
       pattern: "Not enough downhill pressure to bend the defense.",
-      focus: "Create paint pressure earlier in possessions.",
+      focus: "Create paint pressure earlier.",
     };
   }
 
   if (helpPasses >= 3 && noHelpPasses <= 1) {
     return {
-      pattern: "Recognized help well and moved the ball on time.",
-      focus: "Keep collapsing the defense before passing.",
+      pattern: "Recognized help and moved it on time.",
+      focus: "Keep collapsing the defense first.",
     };
   }
 
   if (forcedFinishes >= 2) {
     return {
       pattern: `Forced ${forcedFinishes} finishes into help.`,
-      focus: "See the second defender sooner and play off the collapse.",
+      focus: "See the second defender sooner.",
     };
   }
 
   if (turnovers >= 2) {
     return {
       pattern: `Turnovers ended ${turnovers} possessions.`,
-      focus: "Slow the decision half a beat and simplify the next read.",
+      focus: "Slow the decision half a beat.",
     };
   }
 
   return {
     pattern: "Session is still building.",
-    focus: "Stack more possessions to reveal the clearest habit.",
+    focus: "Stack more possessions.",
+  };
+}
+
+function getIdentityInsight(possessions: SavedPossession[]): IdentityInsight {
+  if (!possessions.length) {
+    return {
+      label: "No identity yet",
+      detail: "Stack possessions to reveal decision bias.",
+    };
+  }
+
+  let passCount = 0;
+  let finishCount = 0;
+  let noHelpPasses = 0;
+  let helpPasses = 0;
+
+  for (const possession of possessions) {
+    const events = possession.events;
+    const pass =
+      hasEventLabel(events, "action", "Pass") || hasEventLabel(events, "decision", "Pass");
+    const finish = hasEventLabel(events, "decision", "Finish");
+    const help = hasEventLabel(events, "defense", "Help");
+    const noHelp = hasEventLabel(events, "defense", "No Help");
+
+    if (pass) passCount += 1;
+    if (finish) finishCount += 1;
+    if (noHelp && pass) noHelpPasses += 1;
+    if (help && pass) helpPasses += 1;
+  }
+
+  if (noHelpPasses >= 2 && noHelpPasses >= helpPasses) {
+    return {
+      label: "Pass-first bias",
+      detail: "Passing even when defense stays home.",
+    };
+  }
+
+  if (finishCount >= passCount + 2) {
+    return {
+      label: "Score-first pressure",
+      detail: "Consistently turns downhill reads into finishes.",
+    };
+  }
+
+  if (helpPasses >= 2 && helpPasses >= noHelpPasses) {
+    return {
+      label: "Help reader",
+      detail: "Moves the ball when the defense commits.",
+    };
+  }
+
+  return {
+    label: "Balanced decision profile",
+    detail: "No dominant tendency yet.",
   };
 }
 
@@ -603,25 +724,6 @@ function InsightRow({
   );
 }
 
-function InsightBlock({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl border border-white/8 bg-black/20 p-3">
-      <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-        {label}
-      </p>
-      <p className="mt-1 text-sm leading-5 text-white/88">
-        {value}
-      </p>
-    </div>
-  );
-}
-
 function InsightPanel({
   selectedPossession,
   possessions,
@@ -636,6 +738,11 @@ function InsightPanel({
 
   const sessionInsight = useMemo(
     () => getSessionInsight(possessions),
+    [possessions]
+  );
+
+  const identityInsight = useMemo(
+    () => getIdentityInsight(possessions),
     [possessions]
   );
 
@@ -656,18 +763,41 @@ function InsightPanel({
           value={possessionInsight.read}
           tone={possessionInsight.tone}
         />
-        <InsightBlock label="Why" value={possessionInsight.why} />
-        <InsightBlock label="Next" value={possessionInsight.next} />
-      </div>
 
-      <div className="my-4 h-px bg-white/8" />
+        <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+            Next
+          </p>
+          <p className="mt-1 text-sm leading-5 text-white/88">
+            {possessionInsight.next}
+          </p>
+        </div>
 
-      <div className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
-          Session pattern
-        </p>
-        <InsightBlock label="Pattern" value={sessionInsight.pattern} />
-        <InsightBlock label="Focus" value={sessionInsight.focus} />
+        <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+            Session pattern
+          </p>
+          <p className="mt-1 text-sm leading-5 text-white/88">
+            {sessionInsight.pattern}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+            Focus
+          </p>
+          <p className="mt-1 text-sm leading-5 text-white/88">
+            {sessionInsight.focus}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+            Identity
+          </p>
+          <p className="mt-1 text-sm text-white/88">{identityInsight.label}</p>
+          <p className="mt-1 text-xs text-white/55">{identityInsight.detail}</p>
+        </div>
       </div>
     </div>
   );
@@ -723,6 +853,11 @@ export default function ReviewPage() {
     return savedPossessions.find((p: SavedPossession) => p.id === selectedPossessionId) ?? null;
   }, [savedPossessions, selectedPossessionId]);
 
+  const selectedIndex = useMemo(() => {
+    if (!selectedPossessionId) return -1;
+    return savedPossessions.findIndex((p) => p.id === selectedPossessionId);
+  }, [savedPossessions, selectedPossessionId]);
+
   const signal = useMemo<SessionSignal>(() => countSessionSignal(savedPossessions), [savedPossessions]);
 
   const currentPlayerName = useMemo<string>(() => {
@@ -769,6 +904,20 @@ export default function ReviewPage() {
   }, [step]);
 
   const progressPct = durationSec > 0 ? (currentSec / durationSec) * 100 : 0;
+
+  const dots = useMemo(() => {
+    return savedPossessions.map((possession, index) => ({
+      tone: getDotTone(possession),
+      label: `Possession ${savedPossessions.length - index}`,
+    }));
+  }, [savedPossessions]);
+
+  const selectedLane = selectedPossession ? getPossessionLane(selectedPossession) : null;
+  const selectedHelp = selectedPossession ? getPossessionHelp(selectedPossession) : null;
+  const selectedDecision = selectedPossession ? getPossessionDecision(selectedPossession) : null;
+  const selectedDownhill = selectedPossession
+    ? hasEventLabel(selectedPossession.events, "action", "Downhill")
+    : false;
 
   const options = useMemo<Option[]>(() => {
     switch (step) {
@@ -1487,6 +1636,17 @@ export default function ReviewPage() {
             </section>
 
             <aside className="min-w-0 space-y-5">
+              <DotField
+                dots={dots}
+                activeIndex={selectedIndex >= 0 ? selectedIndex : undefined}
+                onSelect={(index) => {
+                  const possession = savedPossessions[index];
+                  if (!possession) return;
+                  setSelectedPossessionId(possession.id);
+                  seekTo(possession.startSec);
+                }}
+              />
+
               <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
                 <p className="text-[10px] uppercase tracking-[0.24em] text-white/35">
                   Session signal
@@ -1528,6 +1688,13 @@ export default function ReviewPage() {
                   </div>
                 </div>
               </div>
+
+              <MiniCourt
+                lane={selectedLane}
+                downhill={selectedDownhill}
+                help={selectedHelp}
+                decision={selectedDecision}
+              />
 
               <InsightPanel
                 selectedPossession={selectedPossession}
