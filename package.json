@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start"
   },
   "dependencies": {
     "next": "16.2.3",
@@ -14,17 +13,6 @@
     "react-dom": "18.3.1",
     "@tensorflow/tfjs": "^4.17.0",
     "@tensorflow/tfjs-backend-webgl": "^4.17.0",
-    "@tensorflow-models/pose-detection": "^3.0.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.4.5",
-    "@types/node": "^20.11.30",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "tailwindcss": "^3.4.3",
-    "postcss": "^8.4.38",
-    "autoprefixer": "^10.4.19",
-    "eslint": "^8.57.0",
-    "eslint-config-next": "16.2.3"
+    "@tensorflow-models/pose-detection": "^2.1.3"
   }
 }
