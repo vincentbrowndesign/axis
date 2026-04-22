@@ -1,11 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
-
-const VisionOverlay = dynamic(
-  () => import("@/components/VisionOverlay"),
-  { ssr: false }
-);
+import VisionOverlay from "@/components/VisionOverlay";
 
 export default function Page() {
   return <VisionOverlay />;
