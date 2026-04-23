@@ -1,57 +1,234 @@
-*,
-*::before,
-*::after {
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0a0a;
+  --panel: #111111;
+  --panel-2: #171717;
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --line: #262626;
+  --lime: #d6ff3f;
+  --green: #86efac;
+  --red: #fca5a5;
+}
+
+* {
   box-sizing: border-box;
 }
 
 html,
 body {
-  padding: 0;
   margin: 0;
-}
-
-body {
-  background: #000;
-  color: #fff;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
 }
 
-.page {
+body {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
 }
 
-.shell {
-  width: 100%;
-  max-width: 720px;
+button,
+input {
+  font: inherit;
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: 40px 20px;
+}
+
+.page-inner {
+  margin: 0 auto;
+  max-width: 1120px;
+}
+
+.hero {
+  margin-bottom: 24px;
 }
 
 .eyebrow {
+  margin: 0 0 10px 0;
+  color: var(--lime);
   font-size: 12px;
-  letter-spacing: 0.24em;
-  opacity: 0.6;
-  margin: 0 0 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
 }
 
-h1 {
-  font-size: 48px;
-  line-height: 1;
-  margin: 0 0 16px;
+.page-title {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 56px);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
 }
 
-.sub {
-  font-size: 18px;
-  line-height: 1.5;
-  opacity: 0.72;
-  margin: 0 0 24px;
+.page-copy {
+  margin-top: 14px;
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+
+@media (min-width: 960px) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
 }
 
 .card {
-  border: 1px solid rgba(255,255,255,0.14);
-  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  border-radius: 24px;
   padding: 20px;
-  background: rgba(255,255,255,0.03);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-title {
+  margin: 0 0 6px 0;
+  font-size: 20px;
+  letter-spacing: -0.03em;
+}
+
+.section-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.upload-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.upload-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.upload-field input[type="file"] {
+  width: 100%;
+  border: 1px dashed var(--line);
+  background: #0d0d0d;
+  color: var(--muted);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: var(--lime);
+  color: #111111;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.file-meta {
+  color: var(--muted);
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.shot-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shot-index {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #1a1a1a;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.shot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 14px;
+}
+
+.shot-time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.badge.make {
+  background: rgba(134, 239, 172, 0.12);
+  color: var(--green);
+  border: 1px solid rgba(134, 239, 172, 0.2);
+}
+
+.badge.miss {
+  background: rgba(252, 165, 165, 0.12);
+  color: var(--red);
+  border: 1px solid rgba(252, 165, 165, 0.2);
 }
